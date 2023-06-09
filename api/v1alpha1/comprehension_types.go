@@ -17,25 +17,59 @@ limitations under the License.
 package v1alpha1
 
 import (
+	// For when I want to use apiextensions.JSON:
+	// apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// Grammar:
+//
+// expr := forExpr
+//       | generateExpr
+//
+// templateExpr := "output": template
+//
+// forExpr := "for": var
+//            "in": generator
+//            "do": expr
+//
+// var := dnslabel
+//
+// generator := "list": object*
+//        // | others TBD
+//
+// template := /* { TypeMeta... } */
+//
+
+type Expr struct {
+	*ForExpr      `json:",omitempty"`
+	*TemplateExpr `json:",omitempty"`
+}
+
+type ForExpr struct {
+	For string    `json:"for"`
+	In  Generator `json:"in"`
+	Do  Expr      `json:"do"`
+}
+
+type TemplateExpr struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Rest       string `json:"rest"` // this is a stand-in!
+}
+
+type Generator struct {
+	List []string `json:"list,omitempty"` // stand-in for now
+}
 
 // ComprehensionSpec defines the desired state of Comprehension
 type ComprehensionSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Comprehension. Edit comprehension_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	ForExpr `json:""`
 }
 
 // ComprehensionStatus defines the observed state of Comprehension
 type ComprehensionStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 }
 
 //+kubebuilder:object:root=true

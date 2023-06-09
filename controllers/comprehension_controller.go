@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	generatev1alpha1 "github.com/squaremo/comprehension-controller/api/v1alpha1"
+	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
 // ComprehensionReconciler reconciles a Comprehension object
@@ -47,9 +47,19 @@ type ComprehensionReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	var obj generate.Comprehension
+	if err := r.Get(ctx, req.NamespacedName, &obj); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	forExpr := &obj.Spec.ForExpr
+	outs := evalTop(forExpr)
+
+	for i := range outs {
+		log.Info("output", outs[i])
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -57,6 +67,6 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // SetupWithManager sets up the controller with the Manager.
 func (r *ComprehensionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&generatev1alpha1.Comprehension{}).
+		For(&generate.Comprehension{}).
 		Complete(r)
 }
