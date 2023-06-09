@@ -1,0 +1,12 @@
+apiVersion: generate.squaremo.dev/v1alpha1
+kind: Comprehension
+metadata:
+  labels:
+    app.kubernetes.io/name: comprehension
+    app.kubernetes.io/instance: comprehension-sample
+    app.kubernetes.io/part-of: comprehension-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: comprehension-controller
+  name: comprehension-sample
+spec:
+  # TODO(user): Add fields here

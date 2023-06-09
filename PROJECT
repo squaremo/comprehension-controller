@@ -7,4 +7,14 @@ layout:
 - go.kubebuilder.io/v3
 projectName: comprehension-controller
 repo: github.com/squaremo/comprehension-controller
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: squaremo.dev
+  group: generate
+  kind: Comprehension
+  path: github.com/squaremo/comprehension-controller/api/v1alpha1
+  version: v1alpha1
 version: "3"

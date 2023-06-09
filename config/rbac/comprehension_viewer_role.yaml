@@ -1,0 +1,27 @@
+# permissions for end users to view comprehensions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: comprehension-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: comprehension-controller
+    app.kubernetes.io/part-of: comprehension-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: comprehension-viewer-role
+rules:
+- apiGroups:
+  - generate.squaremo.dev
+  resources:
+  - comprehensions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - generate.squaremo.dev
+  resources:
+  - comprehensions/status
+  verbs:
+  - get
