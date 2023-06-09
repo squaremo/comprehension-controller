@@ -17,78 +17,68 @@ limitations under the License.
 package controllers
 
 import (
-	"testing"
+	"fmt"
 
-	. "github.com/onsi/gomega"
+	"sigs.k8s.io/yaml"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-func Test_Eval(t *testing.T) {
-	t.Run("empty list", func(t *testing.T) {
-		t.Parallel()
-		g := NewGomegaWithT(t)
-		forExpr := generate.ForExpr{
-			For: "foo",
-			In: generate.Generator{
-				List: []string{},
-			},
-			Do: generate.Expr{
-				TemplateExpr: &generate.TemplateExpr{
-					APIVersion: "v1",
-					Kind:       "Foo",
-					Rest:       "blat!",
-				},
-			},
-		}
-		g.Expect(eval(nil, &forExpr)).To(HaveLen(0))
-	})
+func printEval(eyaml string) {
+	var expr generate.ForExpr
+	if err := yaml.Unmarshal([]byte(eyaml), &expr); err != nil {
+		panic(err)
+	}
+	for _, out := range evalTop(&expr) {
+		fmt.Println(out)
+	}
+}
 
-	t.Run("const template", func(t *testing.T) {
-		t.Parallel()
-		g := NewGomegaWithT(t)
-		forExpr := generate.ForExpr{
-			For: "foo",
-			In: generate.Generator{
-				List: []string{"1", "2", "3"},
-			},
-			Do: generate.Expr{
-				TemplateExpr: &generate.TemplateExpr{
-					APIVersion: "v1",
-					Kind:       "Foo",
-					Rest:       "blat",
-				},
-			},
-		}
-		g.Expect(eval(nil, &forExpr)).To(Equal([]string{"blat", "blat", "blat"}))
-	})
+func Example_empty() {
+	printEval(`
+for: foo
+in:
+  list: []
+do:
+  rest: "blah"
+`)
+	// Output:
+}
 
-	t.Run("nested expr", func(t *testing.T) {
-		t.Parallel()
-		g := NewGomegaWithT(t)
-		forExpr := generate.ForExpr{
-			For: "foo",
-			In: generate.Generator{
-				List: []string{"1", "2", "3"},
-			},
-			Do: generate.Expr{
-				ForExpr: &generate.ForExpr{
-					For: "bar",
-					In: generate.Generator{
-						List: []string{"a", "b"},
-					},
-					Do: generate.Expr{
-						TemplateExpr: &generate.TemplateExpr{
-							APIVersion: "v1",
-							Kind:       "Foo",
-							Rest:       "blat",
-						},
-					},
-				},
-			},
-		}
-		g.Expect(eval(nil, &forExpr)).To(Equal([]string{
-			"blat", "blat", "blat", "blat", "blat", "blat",
-		}))
-	})
+func Example_const() {
+	printEval(`
+for: foo
+in:
+  list:
+  - a
+  - b
+  - c
+do:
+  rest: "blat"
+`)
+	// Output:
+	// blat
+	// blat
+	// blat
+}
+
+func Example_nest() {
+	printEval(`
+for: foo
+in:
+  list: [1,2,3]
+do:
+  for: bar
+  in:
+    list: [a, b]
+  do:
+    rest: "blah"
+`)
+	// Output:
+	// blah
+	// blah
+	// blah
+	// blah
+	// blah
+	// blah
 }
