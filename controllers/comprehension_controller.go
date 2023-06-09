@@ -55,7 +55,10 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	forExpr := &obj.Spec.ForExpr
-	outs := evalTop(forExpr)
+	outs, err := evalTop(forExpr)
+	if err != nil {
+		log.Error(err, "failed to evaluate comprehension")
+	}
 
 	for i := range outs {
 		log.Info("output", outs[i])

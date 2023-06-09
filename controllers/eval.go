@@ -20,24 +20,31 @@ import (
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-func evalTop(expr *generate.ForExpr) []string {
+func evalTop(expr *generate.ForExpr) ([]string, error) {
 	return eval(nil, expr)
 }
 
-func eval(e *env, expr *generate.ForExpr) []string {
+func eval(e *env, expr *generate.ForExpr) ([]string, error) {
 	ins := generateItems(e, &expr.In)
 	var outs []string
 	for i := range ins {
 		newE := &env{name: expr.For, value: ins[i], next: e}
 		// TODO use explicit stack?
 		if forExpr := expr.Do.ForExpr; forExpr != nil {
-			nestedOuts := eval(newE, forExpr)
+			nestedOuts, err := eval(newE, forExpr)
+			if err != nil {
+				return outs, err
+			}
 			outs = append(outs, nestedOuts...)
 		} else if templateExpr := expr.Do.TemplateExpr; templateExpr != nil {
-			outs = append(outs, interpolateString(newE, templateExpr.Rest))
+			out, err := interpolateString(newE, templateExpr.Rest)
+			if err != nil {
+				return outs, err
+			}
+			outs = append(outs, out)
 		}
 	}
-	return outs
+	return outs, nil
 }
 
 func generateItems(_ *env, gen *generate.Generator) []string {
@@ -65,8 +72,4 @@ func (e *env) lookup(name string) (string, bool) {
 		}
 		e = e.next
 	}
-}
-
-func interpolateString(e *env, templateString string) string {
-	return templateString // TODO!
 }

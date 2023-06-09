@@ -29,12 +29,16 @@ func printEval(eyaml string) {
 	if err := yaml.Unmarshal([]byte(eyaml), &expr); err != nil {
 		panic(err)
 	}
-	for _, out := range evalTop(&expr) {
+	outs, err := evalTop(&expr)
+	if err != nil {
+		panic(err)
+	}
+	for _, out := range outs {
 		fmt.Println(out)
 	}
 }
 
-func Example_empty() {
+func Example_eval_empty() {
 	printEval(`
 for: foo
 in:
@@ -45,7 +49,7 @@ do:
 	// Output:
 }
 
-func Example_const() {
+func Example_eval_const() {
 	printEval(`
 for: foo
 in:
@@ -62,7 +66,7 @@ do:
 	// blat
 }
 
-func Example_nest() {
+func Example_eval_nest() {
 	printEval(`
 for: foo
 in:
@@ -81,4 +85,36 @@ do:
 	// blah
 	// blah
 	// blah
+}
+
+func Example_eval_varref() {
+	printEval(`
+for: foo
+in:
+  list: [bar, boo]
+do:
+  rest: value=${foo}
+`)
+	// Output:
+	// value=bar
+	// value=boo
+}
+
+func Example_eval_nested_varref() {
+	printEval(`
+for: outer
+in:
+  list: [a, b]
+do:
+  for: inner
+  in:
+    list: ["1", "2"]
+  do:
+    rest: "[${outer}, ${inner}]"
+`)
+	// Unordered output:
+	// [a, 1]
+	// [b, 1]
+	// [a, 2]
+	// [b, 2]
 }
