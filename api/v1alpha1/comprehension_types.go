@@ -17,8 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	// For when I want to use apiextensions.JSON:
-	// apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -54,9 +53,7 @@ type ForExpr struct {
 }
 
 type TemplateExpr struct {
-	APIVersion string `json:"apiVersion"`
-	Kind       string `json:"kind"`
-	Rest       string `json:"rest"` // this is a stand-in!
+	Template *apiextensions.JSON `json:"template,omitempty"`
 }
 
 type Generator struct {

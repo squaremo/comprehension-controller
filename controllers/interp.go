@@ -18,8 +18,61 @@ package controllers
 
 import (
 	"fmt"
+	//"reflect" // useful for println debugging
 	"strings"
 )
+
+func interpolateTemplate(e *env, t interface{}) (interface{}, error) {
+	switch obj := t.(type) {
+	case string:
+		return interpolateString(e, obj)
+	case map[string]string:
+		return interpolateStringMap(e, obj)
+	case map[string]interface{}:
+		return interpolateMap(e, obj)
+	case []interface{}:
+		return interpolateSlice(e, obj)
+	default:
+		//fmt.Printf("Type = %s\n", reflect.TypeOf(t))
+		return t, nil
+	}
+}
+
+func interpolateStringMap(e *env, t map[string]string) (interface{}, error) {
+	result := map[string]string{}
+	for k, v := range t {
+		out, err := interpolateString(e, v)
+		if err != nil {
+			return nil, err
+		}
+		result[k] = out
+	}
+	return result, nil
+}
+
+func interpolateMap(e *env, t map[string]interface{}) (interface{}, error) {
+	result := map[string]interface{}{}
+	for k, v := range t {
+		out, err := interpolateTemplate(e, v)
+		if err != nil {
+			return nil, err
+		}
+		result[k] = out
+	}
+	return result, nil
+}
+
+func interpolateSlice(e *env, t []interface{}) (interface{}, error) {
+	result := make([]interface{}, len(t))
+	for i := range t {
+		out, err := interpolateTemplate(e, t[i])
+		if err != nil {
+			return nil, err
+		}
+		result[i] = out
+	}
+	return result, nil
+}
 
 type token struct {
 	text string

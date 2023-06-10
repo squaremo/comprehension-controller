@@ -17,7 +17,11 @@ limitations under the License.
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
+
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"sigs.k8s.io/yaml"
 )
 
 func printTokens(s string) {
@@ -55,4 +59,65 @@ func Example_parseInterpolation_embedref() {
 	// "text"
 	// ${var}
 	// "more"
+}
+
+func printTemplate(t string, name, value string) {
+	// I do a bit of a dance here because I want to replicate how a
+	// template is procssed by eval. It gets an apiextension.JSON, so
+	// I start with that.
+	var templateField apiextensions.JSON
+	if err := yaml.Unmarshal([]byte(t), &templateField); err != nil {
+		panic(err)
+	}
+
+	var template interface{}
+	if err := json.Unmarshal(templateField.Raw, &template); err != nil {
+		panic(err)
+	}
+
+	out, err := interpolateTemplate(&env{name: name, value: value}, template)
+	if err != nil {
+		panic(err)
+	}
+	asJSON, err := json.Marshal(out)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s\n", asJSON)
+}
+
+func Example_interpolateTemplate_string() {
+	printTemplate(`"${foo}"`, "foo", "bar")
+	// Output:
+	// "bar"
+}
+
+func Example_interpolateTemplate_map() {
+	t := `
+foo: ${var}
+`
+	printTemplate(t, "var", "bar")
+	// Output:
+	// {"foo":"bar"}
+}
+
+func Example_interpolateTemplate_nested() {
+	t := `
+foo:
+  bar: ${var}
+`
+	printTemplate(t, "var", "boink")
+	// Output:
+	// {"foo":{"bar":"boink"}}
+}
+
+func Example_interpolateTemplate_array() {
+	t := `
+- foo
+- bar
+- ${var}
+`
+	printTemplate(t, "var", "boo")
+	// Output:
+	// ["foo","bar","boo"]
 }

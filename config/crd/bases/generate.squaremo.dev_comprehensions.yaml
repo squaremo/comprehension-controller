@@ -37,16 +37,8 @@ spec:
             properties:
               do:
                 properties:
-                  apiVersion:
-                    type: string
-                  kind:
-                    type: string
-                  rest:
-                    type: string
-                required:
-                - apiVersion
-                - kind
-                - rest
+                  template:
+                    x-kubernetes-preserve-unknown-fields: true
                 type: object
               for:
                 type: string

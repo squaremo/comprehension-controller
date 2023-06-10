@@ -17,16 +17,18 @@ limitations under the License.
 package controllers
 
 import (
+	"encoding/json"
+
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-func evalTop(expr *generate.ForExpr) ([]string, error) {
+func evalTop(expr *generate.ForExpr) ([]interface{}, error) {
 	return eval(nil, expr)
 }
 
-func eval(e *env, expr *generate.ForExpr) ([]string, error) {
+func eval(e *env, expr *generate.ForExpr) ([]interface{}, error) {
 	ins := generateItems(e, &expr.In)
-	var outs []string
+	var outs []interface{}
 	for i := range ins {
 		newE := &env{name: expr.For, value: ins[i], next: e}
 		// TODO use explicit stack?
@@ -37,7 +39,11 @@ func eval(e *env, expr *generate.ForExpr) ([]string, error) {
 			}
 			outs = append(outs, nestedOuts...)
 		} else if templateExpr := expr.Do.TemplateExpr; templateExpr != nil {
-			out, err := interpolateString(newE, templateExpr.Rest)
+			var template interface{}
+			if err := json.Unmarshal(templateExpr.Template.Raw, &template); err != nil {
+				return nil, err
+			}
+			out, err := interpolateTemplate(newE, template)
 			if err != nil {
 				return outs, err
 			}

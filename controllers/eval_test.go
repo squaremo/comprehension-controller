@@ -44,7 +44,7 @@ for: foo
 in:
   list: []
 do:
-  rest: "blah"
+  template: "blah"
 `)
 	// Output:
 }
@@ -58,7 +58,7 @@ in:
   - b
   - c
 do:
-  rest: "blat"
+  template: "blat"
 `)
 	// Output:
 	// blat
@@ -76,7 +76,7 @@ do:
   in:
     list: [a, b]
   do:
-    rest: "blah"
+    template: "blah"
 `)
 	// Output:
 	// blah
@@ -93,7 +93,7 @@ for: foo
 in:
   list: [bar, boo]
 do:
-  rest: value=${foo}
+  template: value=${foo}
 `)
 	// Output:
 	// value=bar
@@ -110,7 +110,7 @@ do:
   in:
     list: ["1", "2"]
   do:
-    rest: "[${outer}, ${inner}]"
+    template: "[${outer}, ${inner}]"
 `)
 	// Unordered output:
 	// [a, 1]
