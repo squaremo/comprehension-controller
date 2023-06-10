@@ -61,7 +61,7 @@ func Example_parseInterpolation_embedref() {
 	// "more"
 }
 
-func printTemplate(t string, name, value string) {
+func printTemplate(t string, name string, value interface{}) {
 	// I do a bit of a dance here because I want to replicate how a
 	// template is procssed by eval. It gets an apiextension.JSON, so
 	// I start with that.
@@ -120,4 +120,27 @@ func Example_interpolateTemplate_array() {
 	printTemplate(t, "var", "boo")
 	// Output:
 	// ["foo","bar","boo"]
+}
+
+func Example_interpolateTemplate_mapvalue() {
+	t := `
+foo: ${var}
+`
+	printTemplate(t, "var", map[string]interface{}{
+		"bar": "baz",
+	})
+	// Output:
+	// {"foo":{"bar":"baz"}}
+}
+
+func Example_interpolateTemplate_slicevalue() {
+	t := `
+foo:
+- bar
+- ${var}
+- baz
+`
+	printTemplate(t, "var", []interface{}{"boo", "boom"})
+	// Output:
+	// {"foo":["bar",["boo","boom"],"baz"]}
 }

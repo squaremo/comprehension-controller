@@ -64,11 +64,11 @@ func generateItems(_ *env, gen *generate.Generator) []string {
 
 type env struct {
 	name  string
-	value string // stand-in until I have a representation of objects
+	value interface{}
 	next  *env
 }
 
-func (e *env) lookup(name string) (string, bool) {
+func (e *env) lookup(name string) (interface{}, bool) {
 	for {
 		if e == nil {
 			return "", false

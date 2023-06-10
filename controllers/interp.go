@@ -26,8 +26,6 @@ func interpolateTemplate(e *env, t interface{}) (interface{}, error) {
 	switch obj := t.(type) {
 	case string:
 		return interpolateString(e, obj)
-	case map[string]string:
-		return interpolateStringMap(e, obj)
 	case map[string]interface{}:
 		return interpolateMap(e, obj)
 	case []interface{}:
@@ -36,18 +34,6 @@ func interpolateTemplate(e *env, t interface{}) (interface{}, error) {
 		//fmt.Printf("Type = %s\n", reflect.TypeOf(t))
 		return t, nil
 	}
-}
-
-func interpolateStringMap(e *env, t map[string]string) (interface{}, error) {
-	result := map[string]string{}
-	for k, v := range t {
-		out, err := interpolateString(e, v)
-		if err != nil {
-			return nil, err
-		}
-		result[k] = out
-	}
-	return result, nil
 }
 
 func interpolateMap(e *env, t map[string]interface{}) (interface{}, error) {
@@ -147,10 +133,10 @@ func parseInterpolation(s string) ([]token, error) {
 	return parts, nil
 }
 
-func interpolateString(e *env, template string) (string, error) {
+func interpolateString(e *env, template string) (interface{}, error) {
 	parts, err := parseInterpolation(template)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// shortcut: any values without refs will just be [token{text: <s>}]
@@ -158,13 +144,29 @@ func interpolateString(e *env, template string) (string, error) {
 		return parts[0].text, nil
 	}
 
+	// semantics: if there's one part, and it's a ref, substitute the
+	// whole value in, as it is.
+	if len(parts) == 1 && parts[0].ref != "" {
+		ref := parts[0].ref
+		if out, ok := e.lookup(ref); ok {
+			return out, nil
+		}
+		return nil, fmt.Errorf("unknown ref ${%s}", ref)
+	}
+
 	var sb strings.Builder
 	for i := range parts {
 		if ref := parts[i].ref; ref != "" {
 			if v, ok := e.lookup(ref); ok {
-				sb.WriteString(v)
+				if s, ok := v.(string); ok {
+					sb.WriteString(s)
+				} else if s, ok := v.(interface{ String() string }); ok {
+					sb.WriteString(s.String())
+				} else {
+					sb.WriteString(fmt.Sprintf("%#v", v)) // TODO ???
+				}
 			} else {
-				return "", fmt.Errorf("unknown ref %q", ref)
+				return nil, fmt.Errorf("unknown ref ${%s}", ref)
 			}
 		} else {
 			sb.WriteString(parts[i].text)
