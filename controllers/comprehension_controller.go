@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -61,7 +62,18 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	for i := range outs {
-		log.Info("output", outs[i])
+		fields, ok := outs[i].(map[string]interface{})
+		if !ok {
+			log.Info("instantiated template does not result in a map")
+			continue // TODO better than this
+		}
+		var instance unstructured.Unstructured
+		instance.Object = fields
+		instance.SetNamespace(obj.GetNamespace())
+		err := r.Create(ctx, &instance)
+		if err != nil { // TODO again, do better
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
