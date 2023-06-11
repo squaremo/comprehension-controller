@@ -20,6 +20,8 @@ import (
 	"fmt"
 	//"reflect" // useful for println debugging
 	"strings"
+
+	"github.com/google/cel-go/cel"
 )
 
 func interpolateTemplate(e *env, t interface{}) (interface{}, error) {
@@ -176,9 +178,39 @@ func interpolateString(e *env, template string) (interface{}, error) {
 	return sb.String(), nil
 }
 
-func interpretExpr(e *env, expr string) (interface{}, error) {
-	if v, ok := e.lookup(expr); ok {
-		return v, nil
+// interpreting expressions
+
+func (e *env) Vars() map[string]interface{} {
+	out := make(map[string]interface{})
+	for e != nil {
+		if _, ok := out[e.name]; !ok {
+			out[e.name] = e.value
+		}
+		e = e.next
 	}
-	return nil, fmt.Errorf("unknown ref ${%s}", expr) // TODO revisit when interpeting
+	return out
+}
+
+func interpretExpr(e *env, expr string) (interface{}, error) {
+	values := e.Vars()
+	celEnv, err := cel.NewEnv()
+	for k := range values {
+		celEnv, err = celEnv.Extend(cel.Variable(k, cel.AnyType))
+		if err != nil {
+			return nil, err
+		}
+	}
+	ast, issues := celEnv.Compile(expr)
+	if err := issues.Err(); err != nil {
+		return nil, err
+	}
+	prog, err := celEnv.Program(ast)
+	if err != nil {
+		return nil, err
+	}
+	ref, _, err := prog.Eval(values)
+	if err != nil {
+		return nil, err
+	}
+	return ref.Value(), nil
 }

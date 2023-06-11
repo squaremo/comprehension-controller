@@ -94,9 +94,9 @@ func Example_interpolateTemplate_string() {
 
 func Example_interpolateTemplate_map() {
 	t := `
-foo: ${var}
+foo: ${v}
 `
-	printTemplate(t, "var", "bar")
+	printTemplate(t, "v", "bar")
 	// Output:
 	// {"foo":"bar"}
 }
@@ -104,9 +104,9 @@ foo: ${var}
 func Example_interpolateTemplate_nested() {
 	t := `
 foo:
-  bar: ${var}
+  bar: ${v}
 `
-	printTemplate(t, "var", "boink")
+	printTemplate(t, "v", "boink")
 	// Output:
 	// {"foo":{"bar":"boink"}}
 }
@@ -115,18 +115,18 @@ func Example_interpolateTemplate_array() {
 	t := `
 - foo
 - bar
-- ${var}
+- ${v}
 `
-	printTemplate(t, "var", "boo")
+	printTemplate(t, "v", "boo")
 	// Output:
 	// ["foo","bar","boo"]
 }
 
 func Example_interpolateTemplate_mapvalue() {
 	t := `
-foo: ${var}
+foo: ${v}
 `
-	printTemplate(t, "var", map[string]interface{}{
+	printTemplate(t, "v", map[string]interface{}{
 		"bar": "baz",
 	})
 	// Output:
@@ -137,10 +137,19 @@ func Example_interpolateTemplate_slicevalue() {
 	t := `
 foo:
 - bar
-- ${var}
+- ${v}
 - baz
 `
-	printTemplate(t, "var", []interface{}{"boo", "boom"})
+	printTemplate(t, "v", []interface{}{"boo", "boom"})
 	// Output:
 	// {"foo":["bar",["boo","boom"],"baz"]}
+}
+
+func Example_interpolateTemplate_indexexpr() {
+	t := `
+foo: ${v[1]}
+`
+	printTemplate(t, "v", []interface{}{"baz", "bar"})
+	// Output:
+	// {"foo":"bar"}
 }

@@ -44,7 +44,7 @@ kind: Comprehension
 metadata:
   name: testcase
 spec:
-  for: var
+  for: v
   in:
     list:
     - foo
@@ -55,9 +55,9 @@ spec:
       apiVersion: v1
       kind: ConfigMap
       metadata:
-        name: cm-${var}
+        name: cm-${v}
       data:
-        value: ${var}
+        value: ${v}
 `
 
 	When("there's a comprehension using a list", func() {
