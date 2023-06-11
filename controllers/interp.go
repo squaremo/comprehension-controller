@@ -60,15 +60,19 @@ func interpolateSlice(e *env, t []interface{}) (interface{}, error) {
 	return result, nil
 }
 
+// Token represents a part of a string that contains interpolated
+// bits. Either `.text` is set, meaning "just text", or `.expr` is
+// set, meaning "something to be evaluated in the runtime
+// environment".
 type token struct {
 	text string
-	ref  string
+	expr string
 }
 
 // For tests and troubleshooting
 func (t token) String() string {
-	if t.ref != "" {
-		return fmt.Sprintf("${%s}", t.ref)
+	if t.expr != "" {
+		return fmt.Sprintf("${%s}", t.expr)
 	}
 	return fmt.Sprintf("%q", t.text)
 }
@@ -113,7 +117,7 @@ func parseInterpolation(s string) ([]token, error) {
 			}
 		case stateRef:
 			if s[i] == '}' {
-				parts = append(parts, token{ref: sb.String()})
+				parts = append(parts, token{expr: sb.String()})
 				sb.Reset()
 				state = stateText
 			} else {
@@ -140,37 +144,41 @@ func interpolateString(e *env, template string) (interface{}, error) {
 	}
 
 	// shortcut: any values without refs will just be [token{text: <s>}]
-	if len(parts) == 1 && parts[0].ref == "" {
+	if len(parts) == 1 && parts[0].expr == "" {
 		return parts[0].text, nil
 	}
 
 	// semantics: if there's one part, and it's a ref, substitute the
 	// whole value in, as it is.
-	if len(parts) == 1 && parts[0].ref != "" {
-		ref := parts[0].ref
-		if out, ok := e.lookup(ref); ok {
-			return out, nil
-		}
-		return nil, fmt.Errorf("unknown ref ${%s}", ref)
+	if len(parts) == 1 && parts[0].expr != "" {
+		expr := parts[0].expr
+		return interpretExpr(e, expr)
 	}
 
 	var sb strings.Builder
 	for i := range parts {
-		if ref := parts[i].ref; ref != "" {
-			if v, ok := e.lookup(ref); ok {
-				if s, ok := v.(string); ok {
-					sb.WriteString(s)
-				} else if s, ok := v.(interface{ String() string }); ok {
-					sb.WriteString(s.String())
-				} else {
-					sb.WriteString(fmt.Sprintf("%#v", v)) // TODO ???
-				}
+		if expr := parts[i].expr; expr != "" {
+			v, err := interpretExpr(e, expr)
+			if err != nil {
+				return nil, err
+			}
+			if s, ok := v.(string); ok {
+				sb.WriteString(s)
+			} else if s, ok := v.(interface{ String() string }); ok {
+				sb.WriteString(s.String())
 			} else {
-				return nil, fmt.Errorf("unknown ref ${%s}", ref)
+				sb.WriteString(fmt.Sprintf("%#v", v)) // TODO ???
 			}
 		} else {
 			sb.WriteString(parts[i].text)
 		}
 	}
 	return sb.String(), nil
+}
+
+func interpretExpr(e *env, expr string) (interface{}, error) {
+	if v, ok := e.lookup(expr); ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("unknown ref ${%s}", expr) // TODO revisit when interpeting
 }
