@@ -61,7 +61,7 @@ func Example_parseInterpolation_embedref() {
 	// "more"
 }
 
-func printTemplate(t string, name string, value interface{}) {
+func compileFromYAML(e *env, t string) *template {
 	// I do a bit of a dance here because I want to replicate how a
 	// template is procssed by eval. It gets an apiextension.JSON, so
 	// I start with that.
@@ -75,15 +75,29 @@ func printTemplate(t string, name string, value interface{}) {
 		panic(err)
 	}
 
-	out, err := interpolateTemplate(&env{name: name, value: value}, template)
+	templ, err := compileTemplate(e, template)
 	if err != nil {
 		panic(err)
 	}
-	asJSON, err := json.Marshal(out)
+	return templ
+}
+
+func printAsJSON(v interface{}) {
+	asJSON, err := json.Marshal(v)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("%s\n", asJSON)
+}
+
+func printTemplate(t string, name string, value interface{}) {
+	e := &env{name: name, value: value}
+	templ := compileFromYAML(e, t)
+	out, err := templ.evaluate(e.vars())
+	if err != nil {
+		panic(err)
+	}
+	printAsJSON(out)
 }
 
 func Example_interpolateTemplate_string() {
@@ -152,4 +166,39 @@ foo: ${v[1]}
 	printTemplate(t, "v", []interface{}{"baz", "bar"})
 	// Output:
 	// {"foo":"bar"}
+}
+
+func Example_interpolateTemplate_tworefs() {
+	t := `
+foo:
+- ${v}
+- bar: ${v}
+`
+	printTemplate(t, "v", 5)
+	// Output:
+	// {"foo":[5,{"bar":5}]}
+}
+
+func Example_interpolateTemplate_multi() {
+	t := `
+foo: ${v}
+`
+	e := &env{name: "v", value: "bar"}
+	templ := compileFromYAML(e, t)
+	out, err := templ.evaluate(e.vars())
+	if err != nil {
+		panic(err)
+	}
+	printAsJSON(out)
+
+	out, err = templ.evaluate(map[string]interface{}{
+		"v": 5,
+	})
+	if err != nil {
+		panic(err)
+	}
+	printAsJSON(out)
+	// Output:
+	// {"foo":"bar"}
+	// {"foo":5}
 }
