@@ -19,21 +19,30 @@ package controllers
 import (
 	"encoding/json"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-func evalTop(expr *generate.ForExpr) ([]interface{}, error) {
-	return eval(nil, expr)
+type evaluator struct {
+	client.Client
 }
 
-func eval(e *env, expr *generate.ForExpr) ([]interface{}, error) {
-	ins := generateItems(e, &expr.In)
+func (ev *evaluator) evalTop(expr *generate.ForExpr) ([]interface{}, error) {
+	return ev.eval(nil, expr)
+}
+
+func (ev *evaluator) eval(e *env, expr *generate.ForExpr) ([]interface{}, error) {
+	ins, err := ev.generateItems(e, &expr.In)
+	if err != nil {
+		return nil, err
+	}
 	var outs []interface{}
 	for i := range ins {
 		newE := &env{name: expr.For, value: ins[i], next: e}
 		// TODO use explicit stack?
 		if forExpr := expr.Do.ForExpr; forExpr != nil {
-			nestedOuts, err := eval(newE, forExpr)
+			nestedOuts, err := ev.eval(newE, forExpr)
 			if err != nil {
 				return outs, err
 			}
@@ -51,15 +60,6 @@ func eval(e *env, expr *generate.ForExpr) ([]interface{}, error) {
 		}
 	}
 	return outs, nil
-}
-
-func generateItems(_ *env, gen *generate.Generator) []string {
-	switch {
-	case gen.List != nil:
-		return gen.List
-	default:
-		panic("unknown generator")
-	}
 }
 
 type env struct {

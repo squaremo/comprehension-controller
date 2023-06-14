@@ -55,8 +55,10 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	ev := &evaluator{Client: client.NewNamespacedClient(r.Client, req.Namespace)}
+
 	forExpr := &obj.Spec.ForExpr
-	outs, err := evalTop(forExpr)
+	outs, err := ev.evalTop(forExpr)
 	if err != nil {
 		log.Error(err, "failed to evaluate comprehension")
 	}
@@ -74,6 +76,7 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err != nil { // TODO again, do better
 			return ctrl.Result{}, err
 		}
+		log.Info("created object", "kind", instance.GetKind(), "name", instance.GetName())
 	}
 
 	return ctrl.Result{}, nil
