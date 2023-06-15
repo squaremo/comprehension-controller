@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	helpers "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +32,16 @@ import (
 func (ev *evaluator) generateItems(e *env, gen *generate.Generator) ([]interface{}, error) {
 	switch {
 	case gen.List != nil:
-		return anyify(gen.List), nil
+		if len(gen.List) == 0 {
+			return nil, nil
+		}
+		out := make([]interface{}, len(gen.List))
+		for i := range gen.List {
+			if err := json.Unmarshal(gen.List[i].Raw, &out[i]); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
 	case gen.Query != nil:
 		return ev.generateObjectQuery(e, gen.Query)
 	default:
@@ -64,6 +74,9 @@ func (ev *evaluator) generateObjectQuery(e *env, gen *generate.ObjectQuery) ([]i
 		if err := ev.List(context.TODO(), &objs, &client.ListOptions{LabelSelector: selector}); err != nil {
 			return nil, fmt.Errorf("unable to fetch selected objects: %w", err)
 		}
+		if len(objs.Items) == 0 {
+			return nil, nil
+		}
 		out := make([]interface{}, len(objs.Items))
 		for i := range objs.Items {
 			out[i] = interface{}(objs.Items[i].Object)
@@ -72,12 +85,4 @@ func (ev *evaluator) generateObjectQuery(e *env, gen *generate.ObjectQuery) ([]i
 	default:
 		return nil, fmt.Errorf("objects query generator must specify one of .name or .matchLabels")
 	}
-}
-
-func anyify(ss []string) []interface{} {
-	out := make([]interface{}, len(ss))
-	for i := range ss {
-		out[i] = interface{}(ss[i])
-	}
-	return out
 }

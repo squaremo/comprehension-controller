@@ -163,8 +163,10 @@ func (in *Generator) DeepCopyInto(out *Generator) {
 	*out = *in
 	if in.List != nil {
 		in, out := &in.List, &out.List
-		*out = make([]string, len(*in))
-		copy(*out, *in)
+		*out = make([]v1.JSON, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.Query != nil {
 		in, out := &in.Query, &out.Query
