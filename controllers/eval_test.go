@@ -29,7 +29,8 @@ func printEval(eyaml string) {
 	if err := yaml.Unmarshal([]byte(eyaml), &expr); err != nil {
 		panic(err)
 	}
-	outs, err := evalTop(&expr)
+	ev := &evaluator{}
+	outs, err := ev.evalTop(&expr)
 	if err != nil {
 		panic(err)
 	}

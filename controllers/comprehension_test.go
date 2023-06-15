@@ -24,6 +24,7 @@ import (
 	gomegatypes "github.com/onsi/gomega/types"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -38,7 +39,11 @@ func loadFromYAML(s string, obj client.Object) {
 
 var _ = Describe("simple comprehension", func() {
 
-	const c = `
+	When("there's a comprehension using a list", func() {
+
+		var namespace string
+
+		const listCompro = `
 apiVersion: generate.squaremo.dev/v1alpha1
 kind: Comprehension
 metadata:
@@ -60,10 +65,6 @@ spec:
         value: ${v}
 `
 
-	When("there's a comprehension using a list", func() {
-
-		var namespace string
-
 		BeforeEach(func() {
 			namespace = "foo"
 			var ns corev1.Namespace
@@ -71,7 +72,7 @@ spec:
 			Expect(k8sClient.Create(context.TODO(), &ns)).To(Succeed())
 
 			var obj generate.Comprehension
-			loadFromYAML(c, &obj)
+			loadFromYAML(listCompro, &obj)
 			obj.Namespace = namespace
 			Expect(k8sClient.Create(context.TODO(), &obj)).To(Succeed())
 		})
@@ -98,6 +99,131 @@ spec:
 				configmapMatch("bar"),
 				configmapMatch("baz"),
 			))
+		})
+	})
+
+	When("there's a comprehension using a named object", func() {
+
+		var namespace string
+
+		const objCompro = `
+apiVersion: generate.squaremo.dev/v1alpha1
+kind: Comprehension
+metadata:
+  name: object-query
+spec:
+  for: cm
+  in:
+    query:
+      apiVersion: v1
+      kind: ConfigMap
+      name: source
+  do:
+    template:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: target
+      stringData: ${cm.data}
+`
+
+		BeforeEach(func() {
+			namespace = "compro-object-query"
+			var ns corev1.Namespace
+			ns.Name = namespace
+			Expect(k8sClient.Create(context.TODO(), &ns)).To(Succeed())
+
+			var cm corev1.ConfigMap
+			cm.Namespace = namespace
+			cm.Name = "source"
+			cm.Data = map[string]string{
+				"foo": "bar",
+			}
+			Expect(k8sClient.Create(context.TODO(), &cm)).To(Succeed())
+
+			var obj generate.Comprehension
+			loadFromYAML(objCompro, &obj)
+			obj.Namespace = namespace
+			Expect(k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+		})
+
+		It("instantiates the template", func() {
+			var secret corev1.Secret
+			Eventually(func() error {
+				return k8sClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: namespace,
+					Name:      "target",
+				}, &secret)
+			}, "2s", "0.5s").Should(BeNil())
+
+			// these expectations are tied to the template, of course
+			Expect(secret).To(SatisfyAll(
+				HaveField("Data", HaveKeyWithValue("foo", []byte("bar"))),
+				HaveField("Name", "target"),
+			))
+		})
+	})
+
+	When("there's a comprehension using an object query", func() {
+
+		var namespace string
+
+		const objCompro = `
+apiVersion: generate.squaremo.dev/v1alpha1
+kind: Comprehension
+metadata:
+  name: object-query
+spec:
+  for: cm
+  in:
+    query:
+      apiVersion: v1
+      kind: ConfigMap
+      matchLabels:
+        app: foo
+  do:
+    template:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: target-${cm.metadata.name}
+      stringData: ${cm.data}
+`
+
+		BeforeEach(func() {
+			namespace = "compro-objects"
+			var ns corev1.Namespace
+			ns.Name = namespace
+			Expect(k8sClient.Create(context.TODO(), &ns)).To(Succeed())
+
+			names := []string{"foo", "bar", "baz"}
+			for i := range names {
+				var cm corev1.ConfigMap
+				cm.Namespace = namespace
+				cm.Name = names[i]
+				cm.Labels = map[string]string{
+					"app": "foo",
+				}
+				cm.Data = map[string]string{
+					"name": names[i],
+				}
+				Expect(k8sClient.Create(context.TODO(), &cm)).To(Succeed())
+			}
+
+			var obj generate.Comprehension
+			loadFromYAML(objCompro, &obj)
+			obj.Namespace = namespace
+			Expect(k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+		})
+
+		It("instantiates the template", func() {
+			var secrets corev1.SecretList
+			Eventually(func() int {
+				Expect(k8sClient.List(context.TODO(), &secrets, &client.ListOptions{
+					Namespace: namespace,
+				})).To(Succeed())
+				return len(secrets.Items)
+			}, "2s", "0.5s").Should(Equal(3))
 		})
 
 	})
