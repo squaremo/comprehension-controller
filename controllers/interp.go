@@ -226,7 +226,6 @@ func compileSlice(ce *cel.Env, t []interface{}) ([]evaluationFunc, error) {
 		}
 		replacements = append(replacements, itemReplacements...)
 	}
-	println(fmt.Sprintf("%#v\n", replacements))
 	return replacements, nil
 }
 
