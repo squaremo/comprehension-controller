@@ -67,15 +67,3 @@ type env struct {
 	value interface{}
 	next  *env
 }
-
-func (e *env) lookup(name string) (interface{}, bool) {
-	for {
-		if e == nil {
-			return "", false
-		}
-		if e.name == name {
-			return e.value, true
-		}
-		e = e.next
-	}
-}
