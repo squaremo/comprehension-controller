@@ -24,22 +24,20 @@ import (
 
 // Grammar:
 //
-// expr := forExpr
-//       | generateExpr
-//
-// templateExpr := "output": template
+// top := templateExpr forExpr+
+
+// templateExpr := "template": template
 //
 // forExpr := "for": var
 //            "in": generator
-//            "do": expr
 //
-// var := dnslabel
+// var := DNSLABEL
 //
-// generator := "list": object*
+// generator := "list" object*
+//           | "query" apiVersion kind name|matchLabels
 //        // | others TBD
 //
-// template := /* { TypeMeta... } */
-//
+// template := k8sTemplate+ /* { TypeMeta... } */
 
 type Expr struct {
 	*ForExpr      `json:",omitempty"`
