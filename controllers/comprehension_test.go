@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,20 +35,43 @@ import (
 
 // It's often easier to write out examples in YAML, then as Go values.
 func loadFromYAML(s string, obj client.Object) {
-	ExpectWithOffset(1, yaml.Unmarshal([]byte(s), obj)).To(Succeed())
+	ExpectWithOffset(2, yaml.Unmarshal([]byte(s), obj)).To(Succeed())
+}
+
+var namespaceBase = "test-comprehension-"
+var namespaceCount int
+
+func newNamespace() string {
+	namespace := fmt.Sprintf("%s-%d", namespaceBase, namespaceCount)
+	namespaceCount++
+	var ns corev1.Namespace
+	ns.Name = namespace
+	ExpectWithOffset(1, k8sClient.Create(context.TODO(), &ns)).To(Succeed())
+	return namespace
+}
+
+func createObjectsInNamespace(ns string, objs ...client.Object) {
+	for i := range objs {
+		objs[i].SetNamespace(ns)
+		ExpectWithOffset(1, k8sClient.Create(context.TODO(), objs[i])).To(Succeed())
+	}
+}
+
+func createComprehension(ns string, y string) {
+	var obj generate.Comprehension
+	loadFromYAML(y, &obj)
+	obj.Namespace = ns
+	obj.Name = "testcase"
+	ExpectWithOffset(1, k8sClient.Create(context.TODO(), &obj)).To(Succeed())
 }
 
 var _ = Describe("simple comprehension", func() {
 
 	When("there's a comprehension using a list", func() {
 
-		var namespace string
-
 		const listCompro = `
 apiVersion: generate.squaremo.dev/v1alpha1
 kind: Comprehension
-metadata:
-  name: testcase
 spec:
   for:
   - var: v
@@ -66,16 +90,11 @@ spec:
         value: ${v}
 `
 
-		BeforeEach(func() {
-			namespace = "foo"
-			var ns corev1.Namespace
-			ns.Name = namespace
-			Expect(k8sClient.Create(context.TODO(), &ns)).To(Succeed())
+		var namespace string
 
-			var obj generate.Comprehension
-			loadFromYAML(listCompro, &obj)
-			obj.Namespace = namespace
-			Expect(k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+		BeforeEach(func() {
+			namespace = newNamespace()
+			createComprehension(namespace, listCompro)
 		})
 
 		It("instantiates the template", func() {
@@ -105,8 +124,6 @@ spec:
 
 	When("there's a comprehension using a named object", func() {
 
-		var namespace string
-
 		const objCompro = `
 apiVersion: generate.squaremo.dev/v1alpha1
 kind: Comprehension
@@ -128,25 +145,18 @@ spec:
         name: target
       stringData: ${cm.data}
 `
+		var namespace string
 
 		BeforeEach(func() {
-			namespace = "compro-object-query"
-			var ns corev1.Namespace
-			ns.Name = namespace
-			Expect(k8sClient.Create(context.TODO(), &ns)).To(Succeed())
+			namespace = newNamespace()
 
 			var cm corev1.ConfigMap
-			cm.Namespace = namespace
 			cm.Name = "source"
 			cm.Data = map[string]string{
 				"foo": "bar",
 			}
-			Expect(k8sClient.Create(context.TODO(), &cm)).To(Succeed())
-
-			var obj generate.Comprehension
-			loadFromYAML(objCompro, &obj)
-			obj.Namespace = namespace
-			Expect(k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+			createObjectsInNamespace(namespace, &cm)
+			createComprehension(namespace, objCompro)
 		})
 
 		It("instantiates the template", func() {
@@ -167,14 +177,9 @@ spec:
 	})
 
 	When("there's a comprehension using an object query", func() {
-
-		var namespace string
-
 		const objCompro = `
 apiVersion: generate.squaremo.dev/v1alpha1
 kind: Comprehension
-metadata:
-  name: object-query
 spec:
   for:
   - var: cm
@@ -192,12 +197,10 @@ spec:
         name: target-${cm.metadata.name}
       stringData: ${cm.data}
 `
+		var namespace string
 
 		BeforeEach(func() {
-			namespace = "compro-objects"
-			var ns corev1.Namespace
-			ns.Name = namespace
-			Expect(k8sClient.Create(context.TODO(), &ns)).To(Succeed())
+			namespace = newNamespace()
 
 			names := []string{"foo", "bar", "baz"}
 			for i := range names {
@@ -212,11 +215,7 @@ spec:
 				}
 				Expect(k8sClient.Create(context.TODO(), &cm)).To(Succeed())
 			}
-
-			var obj generate.Comprehension
-			loadFromYAML(objCompro, &obj)
-			obj.Namespace = namespace
-			Expect(k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+			createComprehension(namespace, objCompro)
 		})
 
 		It("instantiates the template", func() {
@@ -228,6 +227,58 @@ spec:
 				return len(secrets.Items)
 			}, "2s", "0.5s").Should(Equal(3))
 		})
+	})
 
+	When("there's a comprehension with a template of a list", func() {
+		const compro = `
+apiVersion: generate.squaremo.dev/v1alpha1
+kind: Comprehension
+spec:
+  yield:
+    template:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: secret-${i}
+      stringData:
+        i: ${i}
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: cm-${i}
+      data:
+        i: ${i}
+
+  for:
+  - var: i
+    in: { list: [a,b,c] }
+`
+
+		var namespace string
+
+		BeforeEach(func() {
+			namespace = newNamespace()
+			createComprehension(namespace, compro)
+		})
+
+		It("flattens the list and creates each item of each template result", func() {
+			var cms corev1.ConfigMapList
+			Eventually(func() int {
+				Expect(k8sClient.List(context.TODO(), &cms, &client.ListOptions{
+					Namespace: namespace,
+				})).To(Succeed())
+				return len(cms.Items)
+			}, "3s", "0.5s").Should(Equal(3))
+			// TODO other assertions?
+			var secrets corev1.SecretList
+			Eventually(func() int {
+				Expect(k8sClient.List(context.TODO(), &secrets, &client.ListOptions{
+					Namespace: namespace,
+				})).To(Succeed())
+				return len(secrets.Items)
+			}, "3s", "0.5s").Should(Equal(3))
+			// TODO other assertions?
+
+		})
 	})
 })

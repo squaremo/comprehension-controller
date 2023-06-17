@@ -63,22 +63,42 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	for i := range outs {
-		fields, ok := outs[i].(map[string]interface{})
-		if !ok {
-			log.Info("instantiated template does not result in a map")
+		switch out := outs[i].(type) {
+		case map[string]interface{}:
+			if err := r.createObject(ctx, req.Namespace, out); err != nil {
+				return ctrl.Result{}, err // TODO do better
+			}
+		case []interface{}:
+			for i := range out {
+				obj, ok := out[i].(map[string]interface{})
+				if !ok {
+					log.Info("item in instanatiated template is not an object") // TODO better
+					continue
+				}
+				if err := r.createObject(ctx, req.Namespace, obj); err != nil {
+					return ctrl.Result{}, err // TODO can do better here
+				}
+			}
+		default:
+			log.Info("instantiated template does not result in an object or list of objects")
 			continue // TODO better than this
 		}
-		var instance unstructured.Unstructured
-		instance.Object = fields
-		instance.SetNamespace(obj.GetNamespace())
-		err := r.Create(ctx, &instance)
-		if err != nil { // TODO again, do better
-			return ctrl.Result{}, err
-		}
-		log.Info("created object", "kind", instance.GetKind(), "name", instance.GetName())
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ComprehensionReconciler) createObject(ctx context.Context, namespace string, fields map[string]interface{}) error {
+	log := log.FromContext(ctx)
+	var instance unstructured.Unstructured
+	instance.Object = fields
+	instance.SetNamespace(namespace)
+	err := r.Create(ctx, &instance) // FIXME Upsert instead
+	if err != nil {
+		return err
+	}
+	log.Info("created object", "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
