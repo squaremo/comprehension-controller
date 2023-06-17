@@ -47,18 +47,7 @@ func (t *template) evaluate(ar map[string]interface{}) (interface{}, error) {
 			return nil, err
 		}
 	}
-	return t.blank, nil
-}
-
-func (e *env) vars() map[string]interface{} {
-	out := make(map[string]interface{})
-	for e != nil {
-		if _, ok := out[e.name]; !ok {
-			out[e.name] = e.value
-		}
-		e = e.next
-	}
-	return out
+	return deepcopy(t.blank), nil
 }
 
 func (e *env) celEnv() (*cel.Env, error) {
@@ -66,13 +55,42 @@ func (e *env) celEnv() (*cel.Env, error) {
 	if err != nil {
 		return nil, err
 	}
-	for k := range e.vars() {
-		ce, err = ce.Extend(cel.Variable(k, cel.AnyType))
+	for e != nil {
+		ce, err = ce.Extend(cel.Variable(e.name, cel.AnyType))
 		if err != nil {
 			return nil, err
 		}
+		e = e.next
 	}
 	return ce, nil
+}
+
+// Deep copy a value output from a template. These are expected to be
+// JSON-compatible values, so channels, os.File, etc., are not a
+// concern.
+func deepcopy(in interface{}) interface{} {
+	deepcopySlice := func(in []interface{}) interface{} {
+		out := make([]interface{}, len(in))
+		for i := range in {
+			out[i] = deepcopy(in[i])
+		}
+		return out
+	}
+	deepcopyMap := func(in map[string]interface{}) interface{} {
+		out := map[string]interface{}{}
+		for k, v := range in {
+			out[k] = deepcopy(v)
+		}
+		return out
+	}
+	switch obj := in.(type) {
+	case []interface{}:
+		return deepcopySlice(obj)
+	case map[string]interface{}:
+		return deepcopyMap(obj)
+	}
+	// everything else is assumed to be an atom
+	return in
 }
 
 func replacePointer(site *interface{}) replaceFunc {
@@ -226,7 +244,6 @@ func compileSlice(ce *cel.Env, t []interface{}) ([]evaluationFunc, error) {
 		}
 		replacements = append(replacements, itemReplacements...)
 	}
-	println(fmt.Sprintf("%#v\n", replacements))
 	return replacements, nil
 }
 
@@ -242,45 +259,10 @@ func compileExpr(ce *cel.Env, expr string) (cel.Program, error) {
 	return prog, nil
 }
 
-// --- old interpolation stuff
-
-func interpolateTemplate(e *env, t interface{}) (interface{}, error) {
-	switch obj := t.(type) {
-	case string:
-		return interpolateString(e, obj)
-	case map[string]interface{}:
-		return interpolateMap(e, obj)
-	case []interface{}:
-		return interpolateSlice(e, obj)
-	default:
-		//fmt.Printf("Type = %s\n", reflect.TypeOf(t))
-		return t, nil
-	}
-}
-
-func interpolateMap(e *env, t map[string]interface{}) (interface{}, error) {
-	result := map[string]interface{}{}
-	for k, v := range t {
-		out, err := interpolateTemplate(e, v)
-		if err != nil {
-			return nil, err
-		}
-		result[k] = out
-	}
-	return result, nil
-}
-
-func interpolateSlice(e *env, t []interface{}) (interface{}, error) {
-	result := make([]interface{}, len(t))
-	for i := range t {
-		out, err := interpolateTemplate(e, t[i])
-		if err != nil {
-			return nil, err
-		}
-		result[i] = out
-	}
-	return result, nil
-}
+// ----
+// Parsing interpolations (where there could be an expression in the
+// middle of bits of literal string).
+// ----
 
 // Token represents a part of a string that contains interpolated
 // bits. Either `.text` is set, meaning "just text", or `.expr` is
@@ -357,69 +339,4 @@ func parseInterpolation(s string) ([]token, error) {
 		parts = append(parts, token{text: sb.String()})
 	}
 	return parts, nil
-}
-
-func interpolateString(e *env, template string) (interface{}, error) {
-	parts, err := parseInterpolation(template)
-	if err != nil {
-		return nil, err
-	}
-
-	// shortcut: any values without refs will just be [token{text: <s>}]
-	if len(parts) == 1 && parts[0].expr == "" {
-		return parts[0].text, nil
-	}
-
-	// semantics: if there's one part, and it's a ref, substitute the
-	// whole value in, as it is.
-	if len(parts) == 1 && parts[0].expr != "" {
-		expr := parts[0].expr
-		return interpretExpr(e, expr)
-	}
-
-	var sb strings.Builder
-	for i := range parts {
-		if expr := parts[i].expr; expr != "" {
-			v, err := interpretExpr(e, expr)
-			if err != nil {
-				return nil, err
-			}
-			if s, ok := v.(string); ok {
-				sb.WriteString(s)
-			} else if s, ok := v.(interface{ String() string }); ok {
-				sb.WriteString(s.String())
-			} else {
-				sb.WriteString(fmt.Sprintf("%#v", v)) // TODO ???
-			}
-		} else {
-			sb.WriteString(parts[i].text)
-		}
-	}
-	return sb.String(), nil
-}
-
-// interpreting expressions
-
-func interpretExpr(e *env, expr string) (interface{}, error) {
-	values := e.vars()
-	celEnv, err := cel.NewEnv()
-	for k := range values {
-		celEnv, err = celEnv.Extend(cel.Variable(k, cel.AnyType))
-		if err != nil {
-			return nil, err
-		}
-	}
-	ast, issues := celEnv.Compile(expr)
-	if err := issues.Err(); err != nil {
-		return nil, err
-	}
-	prog, err := celEnv.Program(ast)
-	if err != nil {
-		return nil, err
-	}
-	ref, _, err := prog.Eval(values)
-	if err != nil {
-		return nil, err
-	}
-	return ref.Value(), nil
 }

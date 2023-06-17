@@ -24,32 +24,24 @@ import (
 
 // Grammar:
 //
-// expr := forExpr
-//       | generateExpr
+// top := templateExpr forExpr+
+
+// templateExpr := "template": template
 //
-// templateExpr := "output": template
-//
-// forExpr := "for": var
+// forExpr := "var": var
 //            "in": generator
-//            "do": expr
 //
-// var := dnslabel
+// var := DNSLABEL
 //
-// generator := "list": object*
+// generator := "list" object*
+//           | "query" apiVersion kind name|matchLabels
 //        // | others TBD
 //
-// template := /* { TypeMeta... } */
-//
-
-type Expr struct {
-	*ForExpr      `json:",omitempty"`
-	*TemplateExpr `json:",omitempty"`
-}
+// template := k8sTemplate+ /* { TypeMeta... } */
 
 type ForExpr struct {
-	For string    `json:"for"`
+	Var string    `json:"var"`
 	In  Generator `json:"in"`
-	Do  Expr      `json:"do"`
 }
 
 type TemplateExpr struct {
@@ -70,7 +62,8 @@ type ObjectQuery struct {
 
 // ComprehensionSpec defines the desired state of Comprehension
 type ComprehensionSpec struct {
-	ForExpr `json:""`
+	Yield TemplateExpr `json:"yield"`
+	For   []ForExpr    `json:"for"`
 }
 
 // ComprehensionStatus defines the observed state of Comprehension

@@ -35,40 +35,47 @@ spec:
           spec:
             description: ComprehensionSpec defines the desired state of Comprehension
             properties:
-              do:
+              for:
+                items:
+                  properties:
+                    in:
+                      properties:
+                        list:
+                          items:
+                            x-kubernetes-preserve-unknown-fields: true
+                          type: array
+                        query:
+                          properties:
+                            apiVersion:
+                              type: string
+                            kind:
+                              type: string
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            name:
+                              type: string
+                          required:
+                          - apiVersion
+                          - kind
+                          type: object
+                      type: object
+                    var:
+                      type: string
+                  required:
+                  - in
+                  - var
+                  type: object
+                type: array
+              yield:
                 properties:
                   template:
                     x-kubernetes-preserve-unknown-fields: true
                 type: object
-              for:
-                type: string
-              in:
-                properties:
-                  list:
-                    items:
-                      x-kubernetes-preserve-unknown-fields: true
-                    type: array
-                  query:
-                    properties:
-                      apiVersion:
-                        type: string
-                      kind:
-                        type: string
-                      matchLabels:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      name:
-                        type: string
-                    required:
-                    - apiVersion
-                    - kind
-                    type: object
-                type: object
             required:
-            - do
             - for
-            - in
+            - yield
             type: object
           status:
             description: ComprehensionStatus defines the observed state of Comprehension

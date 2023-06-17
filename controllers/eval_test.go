@@ -25,7 +25,7 @@ import (
 )
 
 func printEval(eyaml string) {
-	var expr generate.ForExpr
+	var expr generate.ComprehensionSpec
 	if err := yaml.Unmarshal([]byte(eyaml), &expr); err != nil {
 		panic(err)
 	}
@@ -41,10 +41,11 @@ func printEval(eyaml string) {
 
 func Example_eval_empty() {
 	printEval(`
-for: foo
-in:
-  list: []
-do:
+for:
+- var: foo
+  in:
+    list: []
+yield:
   template: "blah"
 `)
 	// Output:
@@ -52,13 +53,14 @@ do:
 
 func Example_eval_const() {
 	printEval(`
-for: foo
-in:
-  list:
-  - a
-  - b
-  - c
-do:
+for:
+- var: foo
+  in:
+    list:
+    - a
+    - b
+    - c
+yield:
   template: "blat"
 `)
 	// Output:
@@ -69,15 +71,15 @@ do:
 
 func Example_eval_nest() {
 	printEval(`
-for: foo
-in:
-  list: [1,2,3]
-do:
-  for: bar
+for:
+- var: foo
+  in:
+    list: [1,2,3]
+- var: bar
   in:
     list: [a, b]
-  do:
-    template: "blah"
+yield:
+  template: "blah"
 `)
 	// Output:
 	// blah
@@ -90,10 +92,11 @@ do:
 
 func Example_eval_varref() {
 	printEval(`
-for: foo
-in:
-  list: [bar, boo]
-do:
+for:
+- var: foo
+  in:
+    list: [bar, boo]
+yield:
   template: value=${foo}
 `)
 	// Output:
@@ -103,15 +106,15 @@ do:
 
 func Example_eval_nested_varref() {
 	printEval(`
-for: outer
-in:
-  list: [a, b]
-do:
-  for: inner
+for:
+- var: outer
+  in:
+    list: [a, b]
+- var: inner
   in:
     list: ["1", "2"]
-  do:
-    template: "[${outer}, ${inner}]"
+yield:
+  template: "[${outer}, ${inner}]"
 `)
 	// Unordered output:
 	// [a, 1]
