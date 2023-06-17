@@ -47,7 +47,7 @@ func (t *template) evaluate(ar map[string]interface{}) (interface{}, error) {
 			return nil, err
 		}
 	}
-	return t.blank, nil
+	return deepcopy(t.blank), nil
 }
 
 func (e *env) vars() map[string]interface{} {
@@ -73,6 +73,34 @@ func (e *env) celEnv() (*cel.Env, error) {
 		}
 	}
 	return ce, nil
+}
+
+// Deep copy a value output from a template. These are expected to be
+// JSON-compatible values, so channels, os.File, etc., are not a
+// concern.
+func deepcopy(in interface{}) interface{} {
+	deepcopySlice := func(in []interface{}) interface{} {
+		out := make([]interface{}, len(in))
+		for i := range in {
+			out[i] = deepcopy(in[i])
+		}
+		return out
+	}
+	deepcopyMap := func(in map[string]interface{}) interface{} {
+		out := map[string]interface{}{}
+		for k, v := range in {
+			out[k] = deepcopy(v)
+		}
+		return out
+	}
+	switch obj := in.(type) {
+	case []interface{}:
+		return deepcopySlice(obj)
+	case map[string]interface{}:
+		return deepcopyMap(obj)
+	}
+	// everything else is assumed to be an atom
+	return in
 }
 
 func replacePointer(site *interface{}) replaceFunc {
