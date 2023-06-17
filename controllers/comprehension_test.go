@@ -227,6 +227,58 @@ spec:
 				return len(secrets.Items)
 			}, "2s", "0.5s").Should(Equal(3))
 		})
+	})
 
+	When("there's a comprehension with a template of a list", func() {
+		const compro = `
+apiVersion: generate.squaremo.dev/v1alpha1
+kind: Comprehension
+spec:
+  yield:
+    template:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: secret-${i}
+      stringData:
+        i: ${i}
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: cm-${i}
+      data:
+        i: ${i}
+
+  for:
+  - var: i
+    in: { list: [a,b,c] }
+`
+
+		var namespace string
+
+		BeforeEach(func() {
+			namespace = newNamespace()
+			createComprehension(namespace, compro)
+		})
+
+		It("flattens the list and creates each item of each template result", func() {
+			var cms corev1.ConfigMapList
+			Eventually(func() int {
+				Expect(k8sClient.List(context.TODO(), &cms, &client.ListOptions{
+					Namespace: namespace,
+				})).To(Succeed())
+				return len(cms.Items)
+			}, "3s", "0.5s").Should(Equal(3))
+			// TODO other assertions?
+			var secrets corev1.SecretList
+			Eventually(func() int {
+				Expect(k8sClient.List(context.TODO(), &secrets, &client.ListOptions{
+					Namespace: namespace,
+				})).To(Succeed())
+				return len(secrets.Items)
+			}, "3s", "0.5s").Should(Equal(3))
+			// TODO other assertions?
+
+		})
 	})
 })
