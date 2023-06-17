@@ -28,42 +28,77 @@ type evaluator struct {
 	client.Client
 }
 
-func (ev *evaluator) evalTop(expr *generate.ForExpr) ([]interface{}, error) {
-	return ev.eval(nil, expr)
+type env struct {
+	name string
+	next *env
 }
 
-func (ev *evaluator) eval(e *env, expr *generate.ForExpr) ([]interface{}, error) {
-	ins, err := ev.generateItems(e, &expr.In)
+type generated struct {
+	name   string
+	values []interface{}
+}
+
+func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, error) {
+	// At present, each generator is independent; so it's sufficient
+	// to run each, collect the generated values, then run each
+	// combination through the template.
+	generatedValues := make([]generated, len(expr.For))
+	var e *env
+	for i := range expr.For {
+		// TODO: detect duplicate var names
+		values, err := ev.generateItems(e, &expr.For[i].In)
+		if err != nil {
+			return nil, err
+		}
+		// If any of the generated lists is empty, the product is empty.
+		if len(values) == 0 {
+			return nil, nil
+		}
+		name := expr.For[i].Var
+		e = &env{name: name, next: e}
+		generatedValues[i] = generated{name: name, values: values}
+	}
+
+	var template interface{}
+	if err := json.Unmarshal(expr.Yield.Template.Raw, &template); err != nil {
+		return nil, err
+	}
+
+	t, err := compileTemplate(e, template)
 	if err != nil {
 		return nil, err
 	}
-	var outs []interface{}
-	for i := range ins {
-		newE := &env{name: expr.For, value: ins[i], next: e}
-		// TODO use explicit stack?
-		if forExpr := expr.Do.ForExpr; forExpr != nil {
-			nestedOuts, err := ev.eval(newE, forExpr)
-			if err != nil {
-				return outs, err
-			}
-			outs = append(outs, nestedOuts...)
-		} else if templateExpr := expr.Do.TemplateExpr; templateExpr != nil {
-			var template interface{}
-			if err := json.Unmarshal(templateExpr.Template.Raw, &template); err != nil {
-				return nil, err
-			}
-			out, err := interpolateTemplate(newE, template)
-			if err != nil {
-				return outs, err
-			}
-			outs = append(outs, out)
-		}
-	}
-	return outs, nil
+	return instantiateTemplate(t, map[string]interface{}{}, generatedValues)
 }
 
-type env struct {
-	name  string
-	value interface{}
-	next  *env
+func instantiateTemplate(t *template, ar map[string]interface{}, rest []generated) ([]interface{}, error) {
+	if len(rest) == 0 {
+		return nil, nil
+	}
+
+	g := rest[0]
+
+	if len(rest) == 1 {
+		out := make([]interface{}, len(g.values))
+		for i := range g.values {
+			ar[g.name] = g.values[i]
+			val, err := t.evaluate(ar)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = val
+		}
+		return out, nil
+	}
+
+	var out []interface{}
+	for i := range g.values {
+		ar[g.name] = g.values[i]
+		more, err := instantiateTemplate(t, ar, rest[1:])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, more...)
+	}
+	return out, nil
 }

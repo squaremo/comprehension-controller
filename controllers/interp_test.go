@@ -91,9 +91,8 @@ func printAsJSON(v interface{}) {
 }
 
 func printTemplate(t string, name string, value interface{}) {
-	e := &env{name: name, value: value}
-	templ := compileFromYAML(e, t)
-	out, err := templ.evaluate(e.vars())
+	templ := compileFromYAML(&env{name: name}, t)
+	out, err := templ.evaluate(map[string]interface{}{name: value})
 	if err != nil {
 		panic(err)
 	}
@@ -183,9 +182,10 @@ func Example_interpolateTemplate_multi() {
 	t := `
 foo: ${v}
 `
-	e := &env{name: "v", value: "bar"}
+	e := &env{name: "v"}
 	templ := compileFromYAML(e, t)
-	out, err := templ.evaluate(e.vars())
+
+	out, err := templ.evaluate(map[string]interface{}{"v": "bar"})
 	if err != nil {
 		panic(err)
 	}

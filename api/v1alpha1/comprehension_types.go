@@ -28,7 +28,7 @@ import (
 
 // templateExpr := "template": template
 //
-// forExpr := "for": var
+// forExpr := "var": var
 //            "in": generator
 //
 // var := DNSLABEL
@@ -39,15 +39,9 @@ import (
 //
 // template := k8sTemplate+ /* { TypeMeta... } */
 
-type Expr struct {
-	*ForExpr      `json:",omitempty"`
-	*TemplateExpr `json:",omitempty"`
-}
-
 type ForExpr struct {
-	For string    `json:"for"`
+	Var string    `json:"var"`
 	In  Generator `json:"in"`
-	Do  Expr      `json:"do"`
 }
 
 type TemplateExpr struct {
@@ -68,7 +62,8 @@ type ObjectQuery struct {
 
 // ComprehensionSpec defines the desired state of Comprehension
 type ComprehensionSpec struct {
-	ForExpr `json:""`
+	Yield TemplateExpr `json:"yield"`
+	For   []ForExpr    `json:"for"`
 }
 
 // ComprehensionStatus defines the observed state of Comprehension

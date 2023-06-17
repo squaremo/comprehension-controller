@@ -49,13 +49,14 @@ kind: Comprehension
 metadata:
   name: testcase
 spec:
-  for: v
-  in:
-    list:
-    - foo
-    - bar
-    - baz
-  do:
+  for:
+  - var: v
+    in:
+      list:
+      - foo
+      - bar
+      - baz
+  yield:
     template:
       apiVersion: v1
       kind: ConfigMap
@@ -112,13 +113,14 @@ kind: Comprehension
 metadata:
   name: object-query
 spec:
-  for: cm
-  in:
-    query:
-      apiVersion: v1
-      kind: ConfigMap
-      name: source
-  do:
+  for:
+  - var: cm
+    in:
+      query:
+        apiVersion: v1
+        kind: ConfigMap
+        name: source
+  yield:
     template:
       apiVersion: v1
       kind: Secret
@@ -174,14 +176,15 @@ kind: Comprehension
 metadata:
   name: object-query
 spec:
-  for: cm
-  in:
-    query:
-      apiVersion: v1
-      kind: ConfigMap
-      matchLabels:
-        app: foo
-  do:
+  for:
+  - var: cm
+    in:
+      query:
+        apiVersion: v1
+        kind: ConfigMap
+        matchLabels:
+          app: foo
+  yield:
     template:
       apiVersion: v1
       kind: Secret
