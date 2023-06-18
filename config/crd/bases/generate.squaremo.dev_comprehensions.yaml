@@ -63,6 +63,8 @@ spec:
                       type: object
                     var:
                       type: string
+                    when:
+                      type: string
                   required:
                   - in
                   - var

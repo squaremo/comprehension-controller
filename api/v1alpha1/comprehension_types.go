@@ -30,6 +30,7 @@ import (
 //
 // forExpr := "var": var
 //            "in": generator
+//            "when": CELexpr
 //
 // var := DNSLABEL
 //
@@ -40,8 +41,9 @@ import (
 // template := k8sTemplate+ /* { TypeMeta... } */
 
 type ForExpr struct {
-	Var string    `json:"var"`
-	In  Generator `json:"in"`
+	Var  string    `json:"var"`
+	In   Generator `json:"in"`
+	When string    `json:"when,omitempty"`
 }
 
 type TemplateExpr struct {

@@ -122,3 +122,18 @@ yield:
 	// [a, 2]
 	// [b, 2]
 }
+
+func Example_eval_when() {
+	printEval(`
+yield:
+  template: ${x * x}
+for:
+- var: x
+  in:
+    list: [1,2,3]
+  when: x % 2 == 1
+`)
+	// Output:
+	// 1
+	// 9
+}
