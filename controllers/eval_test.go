@@ -131,9 +131,32 @@ for:
 - var: x
   in:
     list: [1,2,3]
-  when: x % 2 == 1
+  when: int(x) % 2 == 1
 `)
 	// Output:
 	// 1
 	// 9
+}
+
+func Example_eval_when_nested() {
+	printEval(`
+yield:
+  template: "${a}^2 + ${b}^2 = ${c}^2"
+for:
+- var: "a"
+  in:
+    list: [1,2,3,4,5,6,7,8,9,10]
+- var: "b"
+  in:
+    list: [1,2,3,4,5,6,7,8,9,10]
+- var: "c"
+  in:
+    list: [1,2,3,4,5,6,7,8,9,10]
+  when: c*c == a*a + b*b
+`)
+	// Output:
+	// 3^2 + 4^2 = 5^2
+	// 4^2 + 3^2 = 5^2
+	// 6^2 + 8^2 = 10^2
+	// 8^2 + 6^2 = 10^2
 }
