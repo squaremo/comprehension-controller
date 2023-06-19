@@ -281,4 +281,57 @@ spec:
 
 		})
 	})
+
+	When("there's a query generator using an expression", func() {
+		const compro = `
+apiVersion: generate.squaremo.dev/v1alpha1
+kind: Comprehension
+spec:
+  yield:
+    template:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: secret-${name}
+      stringData: ${existing.data}
+  for:
+  - var: name
+    in: { list: ["testcase-expr-0", "testcase-expr-1"] }
+  - var: existing
+    in:
+      query:
+        apiVersion: v1
+        kind: ConfigMap
+        name: ${name}
+`
+		var namespace string
+		BeforeEach(func() {
+			namespace = newNamespace()
+			cm0 := &corev1.ConfigMap{
+				Data: map[string]string{
+					"foo": "bar",
+				},
+			}
+			cm0.Name = "testcase-expr-0"
+			cm1 := &corev1.ConfigMap{
+				Data: map[string]string{
+					"bar": "foo",
+				},
+			}
+			cm1.Name = "testcase-expr-1"
+			createObjectsInNamespace(namespace, cm0, cm1)
+			createComprehension(namespace, compro)
+		})
+
+		It("executes the query with values as given by expressions", func() {
+			var secrets corev1.SecretList
+			Eventually(func() int {
+				Expect(k8sClient.List(context.TODO(), &secrets, &client.ListOptions{
+					Namespace: namespace,
+				})).To(Succeed())
+				return len(secrets.Items)
+			}, "3s", "0.5s").Should(Equal(2)) // TODO more assertions?
+		})
+	})
+
 })

@@ -36,27 +36,19 @@ type env struct {
 
 type generated struct {
 	name   string
-	values []interface{}
+	values generatorFunc
 	when   cel.Program
 }
 
 func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, error) {
-	// At present, each generator is independent; so it's sufficient
-	// to run each, collect the generated values, then run each
-	// combination through the template.
 	generatedValues := make([]generated, len(expr.For))
 	var e *env
 	for i := range expr.For {
 		// TODO: detect duplicate var names
-		values, err := ev.generateItems(e, &expr.For[i].In)
+		values, err := compileGenerator(e, &expr.For[i].In)
 		if err != nil {
 			return nil, err
 		}
-		// If any of the generated lists is empty, the product is empty.
-		if len(values) == 0 {
-			return nil, nil
-		}
-
 		name := expr.For[i].Var
 		e = &env{name: name, next: e}
 
@@ -83,10 +75,10 @@ func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, e
 	if err != nil {
 		return nil, err
 	}
-	return instantiateTemplate(t, map[string]interface{}{}, generatedValues, nil)
+	return ev.instantiateTemplate(t, map[string]interface{}{}, generatedValues, nil)
 }
 
-func instantiateTemplate(t *template, ar map[string]interface{}, rest []generated, out []interface{}) ([]interface{}, error) {
+func (ev *evaluator) instantiateTemplate(t *template, ar map[string]interface{}, rest []generated, out []interface{}) ([]interface{}, error) {
 	if len(rest) == 0 {
 		val, err := t.evaluate(ar)
 		if err != nil {
@@ -96,8 +88,12 @@ func instantiateTemplate(t *template, ar map[string]interface{}, rest []generate
 	}
 
 	g := rest[0]
-	for i := range g.values {
-		ar[g.name] = g.values[i]
+	values, err := g.values(ev, ar)
+	if err != nil {
+		return nil, err
+	}
+	for i := range values {
+		ar[g.name] = values[i]
 
 		if g.when != nil {
 			ref, _, err := g.when.Eval(ar)
@@ -110,7 +106,7 @@ func instantiateTemplate(t *template, ar map[string]interface{}, rest []generate
 		}
 
 		var err error
-		out, err = instantiateTemplate(t, ar, rest[1:], out)
+		out, err = ev.instantiateTemplate(t, ar, rest[1:], out)
 		if err != nil {
 			return nil, err
 		}

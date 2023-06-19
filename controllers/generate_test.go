@@ -36,7 +36,10 @@ func expectGeneratorItems(y string, ev *evaluator, match types.GomegaMatcher) {
 	var gen generate.Generator
 	ExpectWithOffset(1, yaml.Unmarshal([]byte(y), &gen)).To(Succeed())
 	e := &env{}
-	objs, err := ev.generateItems(e, &gen)
+	generate, err := compileGenerator(e, &gen)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+	objs, err := generate(ev, map[string]interface{}{})
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	ExpectWithOffset(1, objs).To(match)
 }
