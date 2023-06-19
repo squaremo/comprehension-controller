@@ -160,3 +160,30 @@ for:
 	// 6^2 + 8^2 = 10^2
 	// 8^2 + 6^2 = 10^2
 }
+
+func Example_eval_dependent() {
+	printEval(`
+yield:
+    template: ${a} -> ${b}
+for:
+- var: a
+  in:
+    list: [1,2,3]
+- var: b
+  in:
+    list:
+    - ${a * 2}
+    - ${a * 3}
+    - ${a * 4}
+`)
+	// Output:
+	// 1 -> 2
+	// 1 -> 3
+	// 1 -> 4
+	// 2 -> 4
+	// 2 -> 6
+	// 2 -> 8
+	// 3 -> 6
+	// 3 -> 9
+	// 3 -> 12
+}
