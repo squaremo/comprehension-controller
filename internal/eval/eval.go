@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controllers
+package eval
 
 import (
 	"encoding/json"
@@ -25,7 +25,8 @@ import (
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-type evaluator struct {
+// Evaluator is for running comprehensions.
+type Evaluator struct {
 	client.Client
 }
 
@@ -40,7 +41,7 @@ type generated struct {
 	when   cel.Program
 }
 
-func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, error) {
+func (ev *Evaluator) Eval(expr *generate.ComprehensionSpec) ([]interface{}, error) {
 	generatedValues := make([]generated, len(expr.For))
 	var e *env
 	for i := range expr.For {
@@ -78,7 +79,7 @@ func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, e
 	return ev.instantiateTemplate(t, map[string]interface{}{}, generatedValues, nil)
 }
 
-func (ev *evaluator) instantiateTemplate(t *template, ar map[string]interface{}, rest []generated, out []interface{}) ([]interface{}, error) {
+func (ev *Evaluator) instantiateTemplate(t *template, ar map[string]interface{}, rest []generated, out []interface{}) ([]interface{}, error) {
 	if len(rest) == 0 {
 		val, err := t.evaluate(ar)
 		if err != nil {

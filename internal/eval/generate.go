@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controllers
+package eval
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-type generatorFunc func(ev *evaluator, ar map[string]interface{}) ([]interface{}, error)
+type generatorFunc func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error)
 
 func compileGenerator(e *env, expr *generate.Generator) (generatorFunc, error) {
 	switch {
@@ -59,7 +59,7 @@ func compileList(e *env, expr *generate.Generator) (generatorFunc, error) {
 		}
 		evals, err := compileSlice(ce, items)
 		if len(evals) > 0 {
-			return func(ev *evaluator, ar map[string]interface{}) ([]interface{}, error) {
+			return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
 				for i := range evals {
 					if err := evals[i](ar); err != nil {
 						return nil, err
@@ -70,7 +70,7 @@ func compileList(e *env, expr *generate.Generator) (generatorFunc, error) {
 		}
 	}
 
-	return func(_ *evaluator, _ map[string]interface{}) ([]interface{}, error) {
+	return func(_ *Evaluator, _ map[string]interface{}) ([]interface{}, error) {
 		return items, nil
 	}, nil
 }
@@ -149,7 +149,7 @@ func compileQuery(e *env, expr *generate.Generator) (generatorFunc, error) {
 			once    sync.Once
 		)
 
-		return func(ev *evaluator, _ map[string]interface{}) ([]interface{}, error) {
+		return func(ev *Evaluator, _ map[string]interface{}) ([]interface{}, error) {
 			once.Do(func() {
 				objects, err = ev.generateObjectQuery(expr.Query)
 			})
@@ -157,7 +157,7 @@ func compileQuery(e *env, expr *generate.Generator) (generatorFunc, error) {
 		}, nil
 	}
 
-	return func(ev *evaluator, ar map[string]interface{}) ([]interface{}, error) {
+	return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
 		for i := range evals {
 			if err := evals[i](ar); err != nil {
 				return nil, err
@@ -167,7 +167,7 @@ func compileQuery(e *env, expr *generate.Generator) (generatorFunc, error) {
 	}, nil
 }
 
-func (ev *evaluator) generateObjectQuery(gen *generate.ObjectQuery) ([]interface{}, error) {
+func (ev *Evaluator) generateObjectQuery(gen *generate.ObjectQuery) ([]interface{}, error) {
 	switch {
 	case gen.MatchLabels == nil && gen.Name != "":
 		var obj unstructured.Unstructured

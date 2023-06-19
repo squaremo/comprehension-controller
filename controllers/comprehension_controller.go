@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
+	"github.com/squaremo/comprehension-controller/internal/eval"
 )
 
 // ComprehensionReconciler reconciles a Comprehension object
@@ -55,9 +56,9 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	ev := &evaluator{Client: client.NewNamespacedClient(r.Client, req.Namespace)}
+	ev := &eval.Evaluator{Client: client.NewNamespacedClient(r.Client, req.Namespace)}
 
-	outs, err := ev.evalTop(&obj.Spec)
+	outs, err := ev.Eval(&obj.Spec)
 	if err != nil {
 		log.Error(err, "failed to evaluate comprehension")
 	}

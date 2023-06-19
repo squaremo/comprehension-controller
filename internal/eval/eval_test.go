@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controllers
+package eval
 
 import (
 	"fmt"
@@ -29,8 +29,8 @@ func printEval(eyaml string) {
 	if err := yaml.Unmarshal([]byte(eyaml), &expr); err != nil {
 		panic(err)
 	}
-	ev := &evaluator{}
-	outs, err := ev.evalTop(&expr)
+	ev := &Evaluator{}
+	outs, err := ev.Eval(&expr)
 	if err != nil {
 		panic(err)
 	}
