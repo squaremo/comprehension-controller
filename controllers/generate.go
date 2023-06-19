@@ -29,24 +29,52 @@ import (
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
 
-func (ev *evaluator) generateItems(e *env, gen *generate.Generator) ([]interface{}, error) {
+type generatorFunc func(ev *evaluator, ar map[string]interface{}) ([]interface{}, error)
+
+func compileGenerator(e *env, expr *generate.Generator) (generatorFunc, error) {
 	switch {
-	case gen.List != nil:
-		if len(gen.List) == 0 {
-			return nil, nil
-		}
-		out := make([]interface{}, len(gen.List))
-		for i := range gen.List {
-			if err := json.Unmarshal(gen.List[i].Raw, &out[i]); err != nil {
+	case expr.List != nil:
+		return compileList(e, expr)
+	case expr.Query != nil:
+		return func(ev *evaluator, _ map[string]interface{}) ([]interface{}, error) {
+			return ev.generateObjectQuery(e, expr.Query)
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unknown generator %#v", expr)
+	}
+}
+
+func compileList(e *env, expr *generate.Generator) (generatorFunc, error) {
+	var items []interface{}
+	if len(expr.List) > 0 {
+		items = make([]interface{}, len(expr.List))
+		for i := range expr.List {
+			if err := json.Unmarshal(expr.List[i].Raw, &items[i]); err != nil {
 				return nil, err
 			}
 		}
-		return out, nil
-	case gen.Query != nil:
-		return ev.generateObjectQuery(e, gen.Query)
-	default:
-		return nil, fmt.Errorf("unknown generator %#v", gen)
+
+		ce, err := e.celEnv()
+		if err != nil {
+			return nil, err
+		}
+		evals, err := compileSlice(ce, items)
+		if len(evals) > 0 {
+			return func(ev *evaluator, ar map[string]interface{}) ([]interface{}, error) {
+				for i := range evals {
+					if err := evals[i](ar); err != nil {
+						return nil, err
+					}
+				}
+				return deepcopy(items).([]interface{}), nil
+			}, nil
+		}
 	}
+
+	return func(_ *evaluator, _ map[string]interface{}) ([]interface{}, error) {
+		return items, nil
+	}, nil
 }
 
 func (ev *evaluator) generateObjectQuery(e *env, gen *generate.ObjectQuery) ([]interface{}, error) {

@@ -34,18 +34,10 @@ type env struct {
 	next *env
 }
 
-type generatorFunc func(ev *evaluator, ar map[string]interface{}) ([]interface{}, error)
-
 type generated struct {
 	name   string
 	values generatorFunc
 	when   cel.Program
-}
-
-func makeGeneratorFunc(e *env, expr *generate.Generator) generatorFunc {
-	return func(ev *evaluator, _ map[string]interface{}) ([]interface{}, error) {
-		return ev.generateItems(e, expr)
-	}
 }
 
 func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, error) {
@@ -53,7 +45,10 @@ func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, e
 	var e *env
 	for i := range expr.For {
 		// TODO: detect duplicate var names
-		values := makeGeneratorFunc(e, &expr.For[i].In)
+		values, err := compileGenerator(e, &expr.For[i].In)
+		if err != nil {
+			return nil, err
+		}
 		name := expr.For[i].Var
 		e = &env{name: name, next: e}
 
