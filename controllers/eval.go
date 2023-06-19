@@ -19,6 +19,7 @@ package controllers
 import (
 	"encoding/json"
 
+	"github.com/google/cel-go/cel"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
@@ -36,6 +37,7 @@ type env struct {
 type generated struct {
 	name   string
 	values []interface{}
+	when   cel.Program
 }
 
 func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, error) {
@@ -54,9 +56,22 @@ func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, e
 		if len(values) == 0 {
 			return nil, nil
 		}
+
 		name := expr.For[i].Var
 		e = &env{name: name, next: e}
-		generatedValues[i] = generated{name: name, values: values}
+
+		var when cel.Program
+		if w := expr.For[i].When; w != "" {
+			ce, err := e.celEnv()
+			if err != nil {
+				return nil, err
+			}
+			when, err = compileExpr(ce, w)
+			if err != nil {
+				return nil, err
+			}
+		}
+		generatedValues[i] = generated{name: name, values: values, when: when}
 	}
 
 	var template interface{}
@@ -68,37 +83,45 @@ func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, e
 	if err != nil {
 		return nil, err
 	}
-	return instantiateTemplate(t, map[string]interface{}{}, generatedValues)
+	return instantiateTemplate(t, map[string]interface{}{}, generatedValues, nil)
 }
 
-func instantiateTemplate(t *template, ar map[string]interface{}, rest []generated) ([]interface{}, error) {
+func instantiateTemplate(t *template, ar map[string]interface{}, rest []generated, out []interface{}) ([]interface{}, error) {
 	if len(rest) == 0 {
-		return nil, nil
-	}
-
-	g := rest[0]
-
-	if len(rest) == 1 {
-		out := make([]interface{}, len(g.values))
-		for i := range g.values {
-			ar[g.name] = g.values[i]
-			val, err := t.evaluate(ar)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = val
-		}
-		return out, nil
-	}
-
-	var out []interface{}
-	for i := range g.values {
-		ar[g.name] = g.values[i]
-		more, err := instantiateTemplate(t, ar, rest[1:])
+		val, err := t.evaluate(ar)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, more...)
+		return append(out, val), nil
+	}
+
+	g := rest[0]
+	for i := range g.values {
+		ar[g.name] = g.values[i]
+
+		if g.when != nil {
+			ref, _, err := g.when.Eval(ar)
+			if err != nil {
+				return nil, err
+			}
+			if !truthy(ref.Value()) {
+				continue
+			}
+		}
+
+		var err error
+		out, err = instantiateTemplate(t, ar, rest[1:], out)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
+}
+
+// truthy here is anything that isn't `false`.
+func truthy(val interface{}) bool {
+	if b, ok := val.(bool); ok {
+		return b
+	}
+	return true
 }
