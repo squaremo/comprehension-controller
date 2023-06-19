@@ -88,34 +88,14 @@ func (ev *evaluator) evalTop(expr *generate.ComprehensionSpec) ([]interface{}, e
 
 func instantiateTemplate(t *template, ar map[string]interface{}, rest []generated) ([]interface{}, error) {
 	if len(rest) == 0 {
-		return nil, nil
+		val, err := t.evaluate(ar)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{val}, nil
 	}
 
 	g := rest[0]
-
-	if len(rest) == 1 {
-		var out []interface{}
-		for i := range g.values {
-			ar[g.name] = g.values[i]
-			if g.when != nil {
-				ref, _, err := g.when.Eval(ar)
-				if err != nil {
-					return nil, err
-				}
-				if !truthy(ref.Value()) {
-					continue
-				}
-			}
-
-			val, err := t.evaluate(ar)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, val)
-		}
-		return out, nil
-	}
-
 	var out []interface{}
 	for i := range g.values {
 		ar[g.name] = g.values[i]
@@ -125,7 +105,7 @@ func instantiateTemplate(t *template, ar map[string]interface{}, rest []generate
 			if err != nil {
 				return nil, err
 			}
-			if truthy(ref.Value()) {
+			if !truthy(ref.Value()) {
 				continue
 			}
 		}
