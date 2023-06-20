@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/yaml"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
@@ -13,7 +15,8 @@ import (
 )
 
 type opts struct {
-	filename string
+	filename  string
+	namespace string
 }
 
 const longDesc = `
@@ -35,6 +38,7 @@ compro -f file.yaml
 	}
 
 	cmd.Flags().StringVarP(&opts.filename, "file", "f", "-", "the path to a file containing a Comprehension object specification")
+	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "default", "the Kubernetes namespace to operate in")
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error: %s\n", err.Error())
@@ -64,9 +68,24 @@ func (o *opts) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// TODO: supply a Kubernetes client with the get-it-from-the-env
-	// constructor.
-	ev := eval.Evaluator{}
+	// TODO: make this lazily constructed
+	k8sConfig, err := config.GetConfig()
+	if err != nil {
+		return err
+	}
+	k8sConfig.UserAgent = "compro"
+	// The client does a bunch of preflight; giving it a higher than
+	// default burst value stops it logging about client-side
+	// throttling.
+	k8sConfig.Burst = 100
+
+	k8sClient, err := client.New(k8sConfig, client.Options{}) // TODO useragent
+	if err != nil {
+		return err
+	}
+	k8sClient = client.NewNamespacedClient(k8sClient, o.namespace)
+
+	ev := eval.Evaluator{Client: k8sClient}
 	outs, err := ev.Eval(&compro.Spec)
 	if err != nil {
 		return err
