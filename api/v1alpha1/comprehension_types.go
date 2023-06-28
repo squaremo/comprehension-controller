@@ -51,8 +51,9 @@ type TemplateExpr struct {
 }
 
 type Generator struct {
-	List  []apiextensions.JSON `json:"list,omitempty"`
-	Query *ObjectQuery         `json:"query,omitempty"`
+	List    []apiextensions.JSON `json:"list,omitempty"`
+	Query   *ObjectQuery         `json:"query,omitempty"`
+	Request *HttpRequest         `json:"request,omitempty"`
 }
 
 type ObjectQuery struct {
@@ -60,6 +61,11 @@ type ObjectQuery struct {
 	Kind        string            `json:"kind"`
 	Name        string            `json:"name,omitempty"`
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+}
+
+type HttpRequest struct {
+	URL     string   `json:"url"`
+	Headers []string `json:"headers,omitempty"`
 }
 
 // ComprehensionSpec defines the desired state of Comprehension

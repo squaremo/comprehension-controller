@@ -60,6 +60,17 @@ spec:
                           - apiVersion
                           - kind
                           type: object
+                        request:
+                          properties:
+                            headers:
+                              items:
+                                type: string
+                              type: array
+                            url:
+                              type: string
+                          required:
+                          - url
+                          type: object
                       type: object
                     var:
                       type: string
