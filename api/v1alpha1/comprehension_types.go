@@ -51,9 +51,9 @@ type TemplateExpr struct {
 }
 
 type Generator struct {
-	List    []apiextensions.JSON `json:"list,omitempty"`
-	Query   *ObjectQuery         `json:"query,omitempty"`
-	Request *HttpRequest         `json:"request,omitempty"`
+	List    *apiextensions.JSON `json:"list,omitempty"`
+	Query   *ObjectQuery        `json:"query,omitempty"`
+	Request *HttpRequest        `json:"request,omitempty"`
 }
 
 type ObjectQuery struct {
