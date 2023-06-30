@@ -47,6 +47,34 @@ func compileGenerator(e *env, expr *generate.Generator) (generatorFunc, error) {
 	}
 }
 
+// helpers
+
+// replaceStrPointer gives a replaceFunc that will replace the string
+// value at the given pointer. This is necessary when the value must
+// be a string, which is sometimes the case when interpolating fields
+// of a generator.
+func replaceStrPointer(p *string) replaceFunc {
+	return func(v interface{}) {
+		if s, ok := v.(string); ok {
+			*p = s
+			return
+		}
+		panic("tried to replace a string with a non-string value")
+	}
+}
+
+// replaceStrMap gives a replaceFunc that will replace the string
+// value at a key in a map. This is necessary for e.g., matchLabels in
+// the query generator, which must have string values.
+func replaceStrMap(m map[string]string, k string) replaceFunc {
+	return func(v interface{}) {
+		if s, ok := v.(string); ok {
+			m[k] = s
+		}
+		panic("tried to replace a string in a map with a non-string value")
+	}
+}
+
 // === list:
 
 func compileList(e *env, expr *generate.Generator) (generatorFunc, error) {
@@ -121,25 +149,6 @@ func compileQuery(e *env, expr *generate.Generator) (generatorFunc, error) {
 			copy[k] = v
 		}
 		query.MatchLabels = copy
-	}
-
-	replaceStrPointer := func(p *string) replaceFunc {
-		return func(v interface{}) {
-			if s, ok := v.(string); ok {
-				*p = s
-				return
-			}
-			panic("tried to replace a string with a non-string value")
-		}
-	}
-
-	replaceStrMap := func(m map[string]string, k string) replaceFunc {
-		return func(v interface{}) {
-			if s, ok := v.(string); ok {
-				m[k] = s
-			}
-			panic("tried to replace a string in a map with a non-string value")
-		}
 	}
 
 	var evals []evaluationFunc
@@ -240,9 +249,39 @@ func (ev *Evaluator) generateObjectQuery(gen *generate.ObjectQuery) ([]interface
 // == request
 
 func compileRequest(e *env, expr *generate.Generator) (generatorFunc, error) {
-	request := expr.Request
-	// TODO evaluate URL, headers
+	request := expr.Request.DeepCopy()
+	ce, err := e.celEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	var evals []evaluationFunc
+	urlEval, err := compileString(ce, request.URL, replaceStrPointer(&request.URL))
+	if err != nil {
+		return nil, err
+	}
+	if urlEval != nil {
+		evals = append(evals, urlEval)
+	}
+
+	for i := range request.Headers {
+		headerEval, err := compileString(ce, request.Headers[i], replaceStrPointer(&request.Headers[i]))
+		if err != nil {
+			return nil, err
+		}
+		if headerEval != nil {
+			evals = append(evals, headerEval)
+		}
+	}
+
+	// TODO memoised value, if there is nothing to evaluate.
 	return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
+		for i := range evals {
+			if err := evals[i](ar); err != nil {
+				return nil, err
+			}
+		}
+
 		resp, err := http.Get(request.URL) // TODO headers
 		if err != nil {
 			return nil, fmt.Errorf("could not fetch generator URL: %w", err)

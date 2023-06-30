@@ -19,8 +19,6 @@ package eval
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -29,38 +27,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/yaml"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
-
-var (
-	k8sClient client.Client
-	baseurl   string
-)
-
-func TestMain(m *testing.M) {
-	testEnv := &envtest.Environment{}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		panic(err)
-	}
-	defer testEnv.Stop()
-
-	c, err := client.New(cfg, client.Options{})
-	if err != nil {
-		panic(err)
-	}
-	k8sClient = c
-
-	httpserver := httptest.NewServer(http.FileServer(http.Dir("testdata")))
-	baseurl = httpserver.URL
-	defer httpserver.Close()
-
-	m.Run()
-
-}
 
 func expectGeneratorItems(g Gomega, y string, ev *Evaluator, match types.GomegaMatcher) {
 	var gen generate.Generator
@@ -155,6 +125,28 @@ query:
 
 			expectGeneratorItems(g, namedObject, ev, ConsistOf(matchKeys(obj)))
 		})
+	})
+}
+
+func Test_request(t *testing.T) {
+	t.Run("there's a request generator", func(t *testing.T) {
+		g := NewWithT(t)
+		var requestGenerator = `
+request:
+  url: ` + baseurl + `/flux-whatif-pulls.json
+`
+		// The returned item is itself a list, hence the nested
+		// ConsistOf -- saying "the result is a list, consisting of an
+		// element which is a list consisting of ...".
+		expectGeneratorItems(g, requestGenerator, &Evaluator{}, ConsistOf(ConsistOf(
+			matchKeys(map[string]interface{}{
+				"url": "https://api.github.com/repos/squaremo/flux-whatif-example/pulls/1",
+				"head": map[string]interface{}{
+					"ref": "nodeport",
+					"sha": "aa1aed98a09a43f3bb20854fe9de5039f7a9a473",
+				},
+			}),
+		)))
 	})
 }
 
