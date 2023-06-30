@@ -175,6 +175,30 @@ spec:
 				))
 			})
 		})
+
+		When("the items are changed", func() {
+			BeforeEach(func() {
+				Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(compro), compro)).To(Succeed())
+				compro.Spec.For[0].In.List = &apiextensions.JSON{
+					Raw: []byte(`["foo", "jam"]`),
+				}
+				Expect(k8sClient.Update(context.TODO(), compro)).To(Succeed())
+
+				Eventually(func() int {
+					Expect(k8sClient.List(context.TODO(), &configmaps, &client.ListOptions{
+						Namespace: namespace,
+					})).To(Succeed())
+					return len(configmaps.Items)
+				}, "5s", "1s").Should(Equal(2))
+			})
+
+			It("removes the unneeded items", func() {
+				Expect(configmaps.Items).To(ConsistOf(
+					configmapMatch("foo"),
+					configmapMatch("jam"),
+				))
+			})
+		})
 	})
 
 	When("there's a comprehension using a named object", func() {

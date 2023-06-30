@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -96,6 +98,9 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
+	if err := r.pruneByInventory(ctx, compro.Status.Inventory, newInventory); err != nil {
+		log.Error(err, "pruning failed") // no reason to fail entirely
+	} // TODO: should it save the new inventory though?
 	compro.Status.Inventory = newInventory
 	err = r.Status().Update(ctx, &compro)
 	return ctrl.Result{}, err
@@ -124,6 +129,61 @@ func (r *ComprehensionReconciler) createOrUpdateObject(ctx context.Context, owne
 
 	log.Info("configured object", "action", action, "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
 	return instance, nil
+}
+
+func (r *ComprehensionReconciler) pruneByInventory(ctx context.Context, old, new *generate.Inventory) error {
+	if old == nil {
+		return nil
+	}
+	objectsToPrune, err := diffAsObjects(old, new)
+	if err != nil {
+		return err
+	}
+	for i := range objectsToPrune {
+		// TODO could collect errors and present as aggregate
+		if err := r.Delete(ctx, objectsToPrune[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func diffAsObjects(old, new *generate.Inventory) ([]client.Object, error) {
+	var result []client.Object
+	newset := map[generate.ObjectRef]struct{}{}
+	for i := range new.Entries {
+		newset[new.Entries[i]] = struct{}{}
+	}
+	for i := range old.Entries {
+		if _, ok := newset[old.Entries[i]]; !ok {
+			obj, err := objectFromObjectRef(old.Entries[i])
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, obj)
+		}
+	}
+	return result, nil
+}
+
+func objectFromObjectRef(ref generate.ObjectRef) (client.Object, error) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{},
+	}
+	obj.SetAPIVersion(ref.GroupVersion)
+	obj.SetKind(ref.Kind)
+
+	parts := strings.Split(ref.NamespacedName, "/")
+	switch len(parts) {
+	case 2:
+		obj.SetNamespace(parts[0])
+		obj.SetName(parts[1])
+	case 1:
+		obj.SetName(parts[0])
+	default:
+		return nil, fmt.Errorf("cannot parse namespaced-name field %q", ref.NamespacedName)
+	}
+	return obj, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
