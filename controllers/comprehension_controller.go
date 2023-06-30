@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
@@ -51,14 +52,14 @@ type ComprehensionReconciler struct {
 func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var obj generate.Comprehension
-	if err := r.Get(ctx, req.NamespacedName, &obj); err != nil {
+	var compro generate.Comprehension
+	if err := r.Get(ctx, req.NamespacedName, &compro); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	ev := &eval.Evaluator{Client: client.NewNamespacedClient(r.Client, req.Namespace)}
 
-	outs, err := ev.Eval(&obj.Spec)
+	outs, err := ev.Eval(&compro.Spec)
 	if err != nil {
 		log.Error(err, "failed to evaluate comprehension")
 	}
@@ -66,7 +67,7 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	for i := range outs {
 		switch out := outs[i].(type) {
 		case map[string]interface{}:
-			if err := r.createObject(ctx, req.Namespace, out); err != nil {
+			if err := r.createObject(ctx, &compro, req.Namespace, out); err != nil {
 				return ctrl.Result{}, err // TODO do better
 			}
 		case []interface{}:
@@ -76,7 +77,7 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 					log.Info("item in instanatiated template is not an object") // TODO better
 					continue
 				}
-				if err := r.createObject(ctx, req.Namespace, obj); err != nil {
+				if err := r.createObject(ctx, &compro, req.Namespace, obj); err != nil {
 					return ctrl.Result{}, err // TODO can do better here
 				}
 			}
@@ -89,11 +90,14 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, nil
 }
 
-func (r *ComprehensionReconciler) createObject(ctx context.Context, namespace string, fields map[string]interface{}) error {
+func (r *ComprehensionReconciler) createObject(ctx context.Context, owner client.Object, namespace string, fields map[string]interface{}) error {
 	log := log.FromContext(ctx)
 	var instance unstructured.Unstructured
 	instance.Object = fields
 	instance.SetNamespace(namespace)
+	if err := controllerutil.SetControllerReference(owner, &instance, r.Scheme); err != nil {
+		return err
+	}
 	err := r.Create(ctx, &instance) // FIXME Upsert instead
 	if err != nil {
 		return err

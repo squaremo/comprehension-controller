@@ -25,6 +25,7 @@ import (
 	gomegatypes "github.com/onsi/gomega/types"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -57,12 +58,13 @@ func createObjectsInNamespace(ns string, objs ...client.Object) {
 	}
 }
 
-func createComprehension(ns string, y string) {
+func createComprehension(ns string, y string) *generate.Comprehension {
 	var obj generate.Comprehension
 	loadFromYAML(y, &obj)
 	obj.Namespace = ns
 	obj.Name = "testcase"
 	ExpectWithOffset(1, k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+	return &obj
 }
 
 var _ = Describe("simple comprehension", func() {
@@ -91,21 +93,21 @@ spec:
 `
 
 		var namespace string
+		var configmaps corev1.ConfigMapList
+		var compro *generate.Comprehension
 
 		BeforeEach(func() {
 			namespace = newNamespace()
-			createComprehension(namespace, listCompro)
-		})
-
-		It("instantiates the template", func() {
-			var configmaps corev1.ConfigMapList
+			compro = createComprehension(namespace, listCompro)
 			Eventually(func() int {
 				Expect(k8sClient.List(context.TODO(), &configmaps, &client.ListOptions{
 					Namespace: namespace,
 				})).To(Succeed())
 				return len(configmaps.Items)
 			}, "5s", "1s").Should(Equal(3))
+		})
 
+		It("instantiates the template", func() {
 			configmapMatch := func(name string) gomegatypes.GomegaMatcher {
 				return SatisfyAll(
 					HaveField("Data", HaveKeyWithValue("value", name)),
@@ -119,6 +121,13 @@ spec:
 				configmapMatch("bar"),
 				configmapMatch("baz"),
 			))
+		})
+
+		It("sets the owner of each object", func() {
+			hasController := Satisfy(func(cm corev1.ConfigMap) bool {
+				return metav1.IsControlledBy(&cm, compro)
+			})
+			Expect(configmaps.Items).To(HaveEach(hasController))
 		})
 	})
 
@@ -146,6 +155,8 @@ spec:
       stringData: ${cm.data}
 `
 		var namespace string
+		var compro *generate.Comprehension
+		var secret corev1.Secret
 
 		BeforeEach(func() {
 			namespace = newNamespace()
@@ -156,23 +167,29 @@ spec:
 				"foo": "bar",
 			}
 			createObjectsInNamespace(namespace, &cm)
-			createComprehension(namespace, objCompro)
-		})
+			compro = createComprehension(namespace, objCompro)
 
-		It("instantiates the template", func() {
-			var secret corev1.Secret
 			Eventually(func() error {
 				return k8sClient.Get(context.TODO(), types.NamespacedName{
 					Namespace: namespace,
 					Name:      "target",
 				}, &secret)
 			}, "2s", "0.5s").Should(BeNil())
+		})
 
+		It("instantiates the template", func() {
 			// these expectations are tied to the template, of course
 			Expect(secret).To(SatisfyAll(
 				HaveField("Data", HaveKeyWithValue("foo", []byte("bar"))),
 				HaveField("Name", "target"),
 			))
+		})
+
+		It("sets the owner to the comprehension object", func() {
+			hasController := Satisfy(func(s *corev1.Secret) bool {
+				return metav1.IsControlledBy(s, compro)
+			})
+			Expect(&secret).To(hasController)
 		})
 	})
 
