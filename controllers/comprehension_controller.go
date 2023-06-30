@@ -18,15 +18,21 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 	"github.com/squaremo/comprehension-controller/internal/eval"
+	"github.com/squaremo/comprehension-controller/internal/inventory"
 )
 
 // ComprehensionReconciler reconciles a Comprehension object
@@ -51,34 +57,40 @@ type ComprehensionReconciler struct {
 func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var obj generate.Comprehension
-	if err := r.Get(ctx, req.NamespacedName, &obj); err != nil {
+	var compro generate.Comprehension
+	if err := r.Get(ctx, req.NamespacedName, &compro); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	ev := &eval.Evaluator{Client: client.NewNamespacedClient(r.Client, req.Namespace)}
 
-	outs, err := ev.Eval(&obj.Spec)
+	outs, err := ev.Eval(&compro.Spec)
 	if err != nil {
 		log.Error(err, "failed to evaluate comprehension")
 	}
 
+	newInventory := &generate.Inventory{}
+
 	for i := range outs {
 		switch out := outs[i].(type) {
 		case map[string]interface{}:
-			if err := r.createObject(ctx, req.Namespace, out); err != nil {
+			obj, err := r.createOrUpdateObject(ctx, &compro, req.Namespace, out)
+			if err != nil {
 				return ctrl.Result{}, err // TODO do better
 			}
+			inventory.Add(newInventory, obj)
 		case []interface{}:
 			for i := range out {
-				obj, ok := out[i].(map[string]interface{})
+				fields, ok := out[i].(map[string]interface{})
 				if !ok {
 					log.Info("item in instanatiated template is not an object") // TODO better
 					continue
 				}
-				if err := r.createObject(ctx, req.Namespace, obj); err != nil {
+				obj, err := r.createOrUpdateObject(ctx, &compro, req.Namespace, fields)
+				if err != nil {
 					return ctrl.Result{}, err // TODO can do better here
 				}
+				inventory.Add(newInventory, obj)
 			}
 		default:
 			log.Info("instantiated template does not result in an object or list of objects")
@@ -86,25 +98,99 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	return ctrl.Result{}, nil
+	if err := r.pruneByInventory(ctx, compro.Status.Inventory, newInventory); err != nil {
+		log.Error(err, "pruning failed") // no reason to fail entirely
+	} // TODO: should it save the new inventory though?
+	compro.Status.Inventory = newInventory
+	err = r.Status().Update(ctx, &compro)
+	return ctrl.Result{}, err
 }
 
-func (r *ComprehensionReconciler) createObject(ctx context.Context, namespace string, fields map[string]interface{}) error {
+func (r *ComprehensionReconciler) createOrUpdateObject(ctx context.Context, owner client.Object, namespace string, fields map[string]interface{}) (*unstructured.Unstructured, error) {
 	log := log.FromContext(ctx)
-	var instance unstructured.Unstructured
-	instance.Object = fields
+	instance := &unstructured.Unstructured{Object: fields}
 	instance.SetNamespace(namespace)
-	err := r.Create(ctx, &instance) // FIXME Upsert instead
+	if err := controllerutil.SetControllerReference(owner, instance, r.Scheme); err != nil {
+		return nil, err
+	}
+	instance = instance.DeepCopy() // to preserve fields
+
+	action, err := controllerutil.CreateOrUpdate(ctx, r.Client, instance, func() error {
+		// assigning fields as a whole might overwrite things in an
+		// existing object; we really want to merge.
+		for k, v := range fields {
+			instance.Object[k] = v
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info("configured object", "action", action, "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
+	return instance, nil
+}
+
+func (r *ComprehensionReconciler) pruneByInventory(ctx context.Context, old, new *generate.Inventory) error {
+	if old == nil {
+		return nil
+	}
+	objectsToPrune, err := diffAsObjects(old, new)
 	if err != nil {
 		return err
 	}
-	log.Info("created object", "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
+	for i := range objectsToPrune {
+		// TODO could collect errors and present as aggregate
+		if err := r.Delete(ctx, objectsToPrune[i]); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func diffAsObjects(old, new *generate.Inventory) ([]client.Object, error) {
+	var result []client.Object
+	newset := map[generate.ObjectRef]struct{}{}
+	for i := range new.Entries {
+		newset[new.Entries[i]] = struct{}{}
+	}
+	for i := range old.Entries {
+		if _, ok := newset[old.Entries[i]]; !ok {
+			obj, err := objectFromObjectRef(old.Entries[i])
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, obj)
+		}
+	}
+	return result, nil
+}
+
+func objectFromObjectRef(ref generate.ObjectRef) (client.Object, error) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{},
+	}
+	obj.SetAPIVersion(ref.GroupVersion)
+	obj.SetKind(ref.Kind)
+
+	parts := strings.Split(ref.NamespacedName, "/")
+	switch len(parts) {
+	case 2:
+		obj.SetNamespace(parts[0])
+		obj.SetName(parts[1])
+	case 1:
+		obj.SetName(parts[0])
+	default:
+		return nil, fmt.Errorf("cannot parse namespaced-name field %q", ref.NamespacedName)
+	}
+	return obj, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ComprehensionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&generate.Comprehension{}).
+		For(&generate.Comprehension{},
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Complete(r)
 }

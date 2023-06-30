@@ -25,6 +25,9 @@ import (
 	gomegatypes "github.com/onsi/gomega/types"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -42,7 +45,7 @@ var namespaceBase = "test-comprehension-"
 var namespaceCount int
 
 func newNamespace() string {
-	namespace := fmt.Sprintf("%s-%d", namespaceBase, namespaceCount)
+	namespace := fmt.Sprintf("%s%d", namespaceBase, namespaceCount)
 	namespaceCount++
 	var ns corev1.Namespace
 	ns.Name = namespace
@@ -57,12 +60,13 @@ func createObjectsInNamespace(ns string, objs ...client.Object) {
 	}
 }
 
-func createComprehension(ns string, y string) {
+func createComprehension(ns string, y string) *generate.Comprehension {
 	var obj generate.Comprehension
 	loadFromYAML(y, &obj)
 	obj.Namespace = ns
 	obj.Name = "testcase"
 	ExpectWithOffset(1, k8sClient.Create(context.TODO(), &obj)).To(Succeed())
+	return &obj
 }
 
 var _ = Describe("simple comprehension", func() {
@@ -91,34 +95,109 @@ spec:
 `
 
 		var namespace string
+		var configmaps corev1.ConfigMapList
+		var compro *generate.Comprehension
+
+		configmapMatch := func(name string) gomegatypes.GomegaMatcher {
+			return SatisfyAll(
+				HaveField("Data", HaveKeyWithValue("value", name)),
+				HaveField("Name", "cm-"+name),
+			)
+		}
 
 		BeforeEach(func() {
 			namespace = newNamespace()
-			createComprehension(namespace, listCompro)
-		})
-
-		It("instantiates the template", func() {
-			var configmaps corev1.ConfigMapList
+			compro = createComprehension(namespace, listCompro)
 			Eventually(func() int {
 				Expect(k8sClient.List(context.TODO(), &configmaps, &client.ListOptions{
 					Namespace: namespace,
 				})).To(Succeed())
 				return len(configmaps.Items)
 			}, "5s", "1s").Should(Equal(3))
+		})
 
-			configmapMatch := func(name string) gomegatypes.GomegaMatcher {
-				return SatisfyAll(
-					HaveField("Data", HaveKeyWithValue("value", name)),
-					HaveField("Name", "cm-"+name),
-				)
-			}
-
+		It("instantiates the template", func() {
 			// these expectations are tied to the template, of course
 			Expect(configmaps.Items).To(ConsistOf(
 				configmapMatch("foo"),
 				configmapMatch("bar"),
 				configmapMatch("baz"),
 			))
+		})
+
+		It("sets the owner of each object", func() {
+			hasController := Satisfy(func(cm corev1.ConfigMap) bool {
+				return metav1.IsControlledBy(&cm, compro)
+			})
+			Expect(configmaps.Items).To(HaveEach(hasController))
+		})
+
+		When("an item is added to the generator", func() {
+			BeforeEach(func() {
+				Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(compro), compro)).To(Succeed())
+				compro.Spec.For[0].In.List = &apiextensions.JSON{
+					Raw: []byte(`["foo", "bar", "baz", "boo"]`),
+				}
+				Expect(k8sClient.Update(context.TODO(), compro)).To(Succeed())
+
+				Eventually(func() int {
+					Expect(k8sClient.List(context.TODO(), &configmaps, &client.ListOptions{
+						Namespace: namespace,
+					})).To(Succeed())
+					return len(configmaps.Items)
+				}, "5s", "1s").Should(Equal(4))
+			})
+
+			It("should have successfully rerun the comprehension", func() {
+				Expect(configmaps.Items).To(ConsistOf(
+					configmapMatch("foo"),
+					configmapMatch("bar"),
+					configmapMatch("baz"),
+					configmapMatch("boo"),
+				))
+			})
+
+			It("should record the objects created in the inventory", func() {
+				Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(compro), compro)).To(Succeed())
+				Expect(compro.Status.Inventory).NotTo(BeNil())
+				// the list.Items don't have full TypeMeta, otherwise
+				// I could get the GroupKind from that. Never mind.
+				gv := schema.GroupVersion{Version: "v1"}.String()
+				k := "ConfigMap"
+				nsn := func(i int) string {
+					return client.ObjectKeyFromObject(&configmaps.Items[i]).String()
+				}
+				Expect(compro.Status.Inventory.Entries).To(ConsistOf(
+					generate.ObjectRef{NamespacedName: nsn(0), GroupVersion: gv, Kind: k},
+					generate.ObjectRef{NamespacedName: nsn(1), GroupVersion: gv, Kind: k},
+					generate.ObjectRef{NamespacedName: nsn(2), GroupVersion: gv, Kind: k},
+					generate.ObjectRef{NamespacedName: nsn(3), GroupVersion: gv, Kind: k},
+				))
+			})
+		})
+
+		When("the items are changed", func() {
+			BeforeEach(func() {
+				Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(compro), compro)).To(Succeed())
+				compro.Spec.For[0].In.List = &apiextensions.JSON{
+					Raw: []byte(`["foo", "jam"]`),
+				}
+				Expect(k8sClient.Update(context.TODO(), compro)).To(Succeed())
+
+				Eventually(func() int {
+					Expect(k8sClient.List(context.TODO(), &configmaps, &client.ListOptions{
+						Namespace: namespace,
+					})).To(Succeed())
+					return len(configmaps.Items)
+				}, "5s", "1s").Should(Equal(2))
+			})
+
+			It("removes the unneeded items", func() {
+				Expect(configmaps.Items).To(ConsistOf(
+					configmapMatch("foo"),
+					configmapMatch("jam"),
+				))
+			})
 		})
 	})
 
@@ -146,6 +225,8 @@ spec:
       stringData: ${cm.data}
 `
 		var namespace string
+		var compro *generate.Comprehension
+		var secret corev1.Secret
 
 		BeforeEach(func() {
 			namespace = newNamespace()
@@ -156,23 +237,29 @@ spec:
 				"foo": "bar",
 			}
 			createObjectsInNamespace(namespace, &cm)
-			createComprehension(namespace, objCompro)
-		})
+			compro = createComprehension(namespace, objCompro)
 
-		It("instantiates the template", func() {
-			var secret corev1.Secret
 			Eventually(func() error {
 				return k8sClient.Get(context.TODO(), types.NamespacedName{
 					Namespace: namespace,
 					Name:      "target",
 				}, &secret)
 			}, "2s", "0.5s").Should(BeNil())
+		})
 
+		It("instantiates the template", func() {
 			// these expectations are tied to the template, of course
 			Expect(secret).To(SatisfyAll(
 				HaveField("Data", HaveKeyWithValue("foo", []byte("bar"))),
 				HaveField("Name", "target"),
 			))
+		})
+
+		It("sets the owner to the comprehension object", func() {
+			hasController := Satisfy(func(s *corev1.Secret) bool {
+				return metav1.IsControlledBy(s, compro)
+			})
+			Expect(&secret).To(hasController)
 		})
 	})
 
