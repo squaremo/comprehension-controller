@@ -188,6 +188,8 @@ for:
 	// 3 -> 12
 }
 
+// demonstrates that you can interpolate into a `list:` generator to
+// flatten a list-of-lists value into the inner items.
 func Example_eval_flatten() {
 	printEval(`
 yield:
@@ -198,7 +200,7 @@ for:
     list: [[1,2,3], [4,5,6]]
 - var: x
   in:
-    list: ${xs} # i.e., lift the value into a list
+    list: ${xs} # i.e., lift the value into a list generator
 `)
 	// Output:
 	// 1
@@ -207,4 +209,41 @@ for:
 	// 4
 	// 5
 	// 6
+}
+
+// demonstrates that you can issue an HTTP request with interpolated
+// parameters (in this case, the repo comes from a literal list). This
+// relies on the httptest server run in main_test.go.
+func Example_eval_request() {
+	printEval(`
+for:
+- var: repo
+  in:
+    list: ["flux-whatif", "flux2"]
+- var: pulls
+  in:
+    request:
+      url: ` + baseurl + `/${repo}-pulls.json
+- var: pr
+  in:
+    list: ${pulls}
+yield:
+  template: ${pr.url}
+`)
+	// Output:
+	// https://api.github.com/repos/squaremo/flux-whatif-example/pulls/1
+	// https://api.github.com/repos/fluxcd/flux2/pulls/4017
+	// https://api.github.com/repos/fluxcd/flux2/pulls/4006
+	// https://api.github.com/repos/fluxcd/flux2/pulls/3368
+	// https://api.github.com/repos/fluxcd/flux2/pulls/3366
+	// https://api.github.com/repos/fluxcd/flux2/pulls/3254
+	// https://api.github.com/repos/fluxcd/flux2/pulls/3158
+	// https://api.github.com/repos/fluxcd/flux2/pulls/2639
+	// https://api.github.com/repos/fluxcd/flux2/pulls/2370
+	// https://api.github.com/repos/fluxcd/flux2/pulls/2222
+	// https://api.github.com/repos/fluxcd/flux2/pulls/2188
+	// https://api.github.com/repos/fluxcd/flux2/pulls/2187
+	// https://api.github.com/repos/fluxcd/flux2/pulls/2086
+	// https://api.github.com/repos/fluxcd/flux2/pulls/1620
+	// https://api.github.com/repos/fluxcd/flux2/pulls/1350
 }

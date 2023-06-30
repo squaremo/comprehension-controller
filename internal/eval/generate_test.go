@@ -128,6 +128,28 @@ query:
 	})
 }
 
+func Test_request(t *testing.T) {
+	t.Run("there's a request generator", func(t *testing.T) {
+		g := NewWithT(t)
+		var requestGenerator = `
+request:
+  url: ` + baseurl + `/flux-whatif-pulls.json
+`
+		// The returned item is itself a list, hence the nested
+		// ConsistOf -- saying "the result is a list, consisting of an
+		// element which is a list consisting of ...".
+		expectGeneratorItems(g, requestGenerator, &Evaluator{}, ConsistOf(ConsistOf(
+			matchKeys(map[string]interface{}{
+				"url": "https://api.github.com/repos/squaremo/flux-whatif-example/pulls/1",
+				"head": map[string]interface{}{
+					"ref": "nodeport",
+					"sha": "aa1aed98a09a43f3bb20854fe9de5039f7a9a473",
+				},
+			}),
+		)))
+	})
+}
+
 func matchKeys(obj map[string]interface{}) types.GomegaMatcher {
 	keys := Keys{}
 	for k := range obj {
