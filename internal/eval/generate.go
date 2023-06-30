@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sync"
 
 	helpers "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,42 +40,72 @@ func compileGenerator(e *env, expr *generate.Generator) (generatorFunc, error) {
 		return compileList(e, expr)
 	case expr.Query != nil:
 		return compileQuery(e, expr)
+	case expr.Request != nil:
+		return compileRequest(e, expr)
 	default:
 		return nil, fmt.Errorf("unknown generator %#v", expr)
 	}
 }
 
-func compileList(e *env, expr *generate.Generator) (generatorFunc, error) {
-	var items []interface{}
-	if len(expr.List) > 0 {
-		items = make([]interface{}, len(expr.List))
-		for i := range expr.List {
-			if err := json.Unmarshal(expr.List[i].Raw, &items[i]); err != nil {
-				return nil, err
-			}
-		}
+// === list:
 
+func compileList(e *env, expr *generate.Generator) (generatorFunc, error) {
+	var itemsExpr interface{}
+	if err := json.Unmarshal(expr.List.Raw, &itemsExpr); err != nil {
+		return nil, fmt.Errorf("cannot decode list value: %w", err)
+	}
+	// there's two possible acceptable values:
+	// - a list of items, each of which we migth interpolate into
+	// - a single string-valued item, which must evaluate to a list
+	switch items := itemsExpr.(type) {
+	case string:
 		ce, err := e.celEnv()
 		if err != nil {
 			return nil, err
 		}
-		evals, err := compileSlice(ce, items)
-		if len(evals) > 0 {
-			return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
-				for i := range evals {
-					if err := evals[i](ar); err != nil {
-						return nil, err
-					}
-				}
-				return deepcopy(items).([]interface{}), nil
-			}, nil
+		var list []interface{}
+		eval, err := compileString(ce, items, func(val interface{}) {
+			list = val.([]interface{}) // FIXME this lets it panic
+		})
+		if err != nil {
+			return nil, err
 		}
-	}
+		if eval == nil {
+			return nil, fmt.Errorf("list must evaluate to a list value, and this is a string value")
+		}
+		return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
+			if err := eval(ar); err != nil {
+				return nil, err
+			}
+			return list, nil
+		}, nil
+	case []interface{}:
+		if len(items) > 0 {
+			ce, err := e.celEnv()
+			if err != nil {
+				return nil, err
+			}
+			evals, err := compileSlice(ce, items)
+			if len(evals) > 0 {
+				return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
+					for i := range evals {
+						if err := evals[i](ar); err != nil {
+							return nil, err
+						}
+					}
+					return deepcopy(items).([]interface{}), nil
+				}, nil
+			}
+		}
 
-	return func(_ *Evaluator, _ map[string]interface{}) ([]interface{}, error) {
-		return items, nil
-	}, nil
+		return func(_ *Evaluator, _ map[string]interface{}) ([]interface{}, error) {
+			return items, nil
+		}, nil
+	}
+	return nil, fmt.Errorf("expected list, or expression evaluating to a list")
 }
+
+// === query
 
 func compileQuery(e *env, expr *generate.Generator) (generatorFunc, error) {
 	ce, err := e.celEnv()
@@ -203,4 +235,33 @@ func (ev *Evaluator) generateObjectQuery(gen *generate.ObjectQuery) ([]interface
 	default:
 		return nil, fmt.Errorf("objects query generator must specify one of .name or .matchLabels")
 	}
+}
+
+// == request
+
+func compileRequest(e *env, expr *generate.Generator) (generatorFunc, error) {
+	request := expr.Request
+	// TODO evaluate URL, headers
+	return func(ev *Evaluator, ar map[string]interface{}) ([]interface{}, error) {
+		resp, err := http.Get(request.URL) // TODO headers
+		if err != nil {
+			return nil, fmt.Errorf("could not fetch generator URL: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("got status %d", resp.StatusCode)
+		}
+		defer resp.Body.Close()
+		var result []interface{}
+		jd := json.NewDecoder(resp.Body)
+		for {
+			var val interface{}
+			if err := jd.Decode(&val); err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, fmt.Errorf("cannot decode response: %w", err)
+			}
+			result = append(result, val)
+		}
+		return result, nil
+	}, nil
 }

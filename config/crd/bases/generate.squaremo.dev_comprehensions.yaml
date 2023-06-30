@@ -41,9 +41,7 @@ spec:
                     in:
                       properties:
                         list:
-                          items:
-                            x-kubernetes-preserve-unknown-fields: true
-                          type: array
+                          x-kubernetes-preserve-unknown-fields: true
                         query:
                           properties:
                             apiVersion:
@@ -59,6 +57,17 @@ spec:
                           required:
                           - apiVersion
                           - kind
+                          type: object
+                        request:
+                          properties:
+                            headers:
+                              items:
+                                type: string
+                              type: array
+                            url:
+                              type: string
+                          required:
+                          - url
                           type: object
                       type: object
                     var:

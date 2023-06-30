@@ -19,6 +19,8 @@ package eval
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -35,6 +37,7 @@ import (
 
 var (
 	k8sClient client.Client
+	baseurl   string
 )
 
 func TestMain(m *testing.M) {
@@ -51,7 +54,12 @@ func TestMain(m *testing.M) {
 	}
 	k8sClient = c
 
+	httpserver := httptest.NewServer(http.FileServer(http.Dir("testdata")))
+	baseurl = httpserver.URL
+	defer httpserver.Close()
+
 	m.Run()
+
 }
 
 func expectGeneratorItems(g Gomega, y string, ev *Evaluator, match types.GomegaMatcher) {

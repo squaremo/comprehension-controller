@@ -187,3 +187,24 @@ for:
 	// 3 -> 9
 	// 3 -> 12
 }
+
+func Example_eval_flatten() {
+	printEval(`
+yield:
+  template: ${x}
+for:
+- var: xs
+  in:
+    list: [[1,2,3], [4,5,6]]
+- var: x
+  in:
+    list: ${xs} # i.e., lift the value into a list
+`)
+	// Output:
+	// 1
+	// 2
+	// 3
+	// 4
+	// 5
+	// 6
+}
