@@ -41,7 +41,7 @@ compro -f file.yaml
 	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "default", "the Kubernetes namespace to operate in")
 
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
 		os.Exit(1)
 	}
 }
