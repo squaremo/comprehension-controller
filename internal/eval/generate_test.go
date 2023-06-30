@@ -19,8 +19,6 @@ package eval
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -29,38 +27,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/yaml"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 )
-
-var (
-	k8sClient client.Client
-	baseurl   string
-)
-
-func TestMain(m *testing.M) {
-	testEnv := &envtest.Environment{}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		panic(err)
-	}
-	defer testEnv.Stop()
-
-	c, err := client.New(cfg, client.Options{})
-	if err != nil {
-		panic(err)
-	}
-	k8sClient = c
-
-	httpserver := httptest.NewServer(http.FileServer(http.Dir("testdata")))
-	baseurl = httpserver.URL
-	defer httpserver.Close()
-
-	m.Run()
-
-}
 
 func expectGeneratorItems(g Gomega, y string, ev *Evaluator, match types.GomegaMatcher) {
 	var gen generate.Generator
