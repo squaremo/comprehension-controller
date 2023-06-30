@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -44,7 +45,7 @@ var namespaceBase = "test-comprehension-"
 var namespaceCount int
 
 func newNamespace() string {
-	namespace := fmt.Sprintf("%s-%d", namespaceBase, namespaceCount)
+	namespace := fmt.Sprintf("%s%d", namespaceBase, namespaceCount)
 	namespaceCount++
 	var ns corev1.Namespace
 	ns.Name = namespace
@@ -133,6 +134,7 @@ spec:
 
 		When("an item is added to the generator", func() {
 			BeforeEach(func() {
+				Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(compro), compro)).To(Succeed())
 				compro.Spec.For[0].In.List = &apiextensions.JSON{
 					Raw: []byte(`["foo", "bar", "baz", "boo"]`),
 				}
@@ -152,6 +154,24 @@ spec:
 					configmapMatch("bar"),
 					configmapMatch("baz"),
 					configmapMatch("boo"),
+				))
+			})
+
+			It("should record the objects created in the inventory", func() {
+				Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(compro), compro)).To(Succeed())
+				Expect(compro.Status.Inventory).NotTo(BeNil())
+				// the list.Items don't have full TypeMeta, otherwise
+				// I could get the GroupKind from that. Never mind.
+				gv := schema.GroupVersion{Version: "v1"}.String()
+				k := "ConfigMap"
+				nsn := func(i int) string {
+					return client.ObjectKeyFromObject(&configmaps.Items[i]).String()
+				}
+				Expect(compro.Status.Inventory.Entries).To(ConsistOf(
+					generate.ObjectRef{NamespacedName: nsn(0), GroupVersion: gv, Kind: k},
+					generate.ObjectRef{NamespacedName: nsn(1), GroupVersion: gv, Kind: k},
+					generate.ObjectRef{NamespacedName: nsn(2), GroupVersion: gv, Kind: k},
+					generate.ObjectRef{NamespacedName: nsn(3), GroupVersion: gv, Kind: k},
 				))
 			})
 		})

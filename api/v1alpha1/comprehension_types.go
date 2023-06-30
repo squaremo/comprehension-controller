@@ -76,6 +76,7 @@ type ComprehensionSpec struct {
 
 // ComprehensionStatus defines the observed state of Comprehension
 type ComprehensionStatus struct {
+	Inventory *Inventory `json:"inventory,omitempty"`
 }
 
 //+kubebuilder:object:root=true

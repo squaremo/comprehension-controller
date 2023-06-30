@@ -22,12 +22,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	generate "github.com/squaremo/comprehension-controller/api/v1alpha1"
 	"github.com/squaremo/comprehension-controller/internal/eval"
+	"github.com/squaremo/comprehension-controller/internal/inventory"
 )
 
 // ComprehensionReconciler reconciles a Comprehension object
@@ -64,22 +67,28 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		log.Error(err, "failed to evaluate comprehension")
 	}
 
+	newInventory := &generate.Inventory{}
+
 	for i := range outs {
 		switch out := outs[i].(type) {
 		case map[string]interface{}:
-			if err := r.createOrUpdateObject(ctx, &compro, req.Namespace, out); err != nil {
+			obj, err := r.createOrUpdateObject(ctx, &compro, req.Namespace, out)
+			if err != nil {
 				return ctrl.Result{}, err // TODO do better
 			}
+			inventory.Add(newInventory, obj)
 		case []interface{}:
 			for i := range out {
-				obj, ok := out[i].(map[string]interface{})
+				fields, ok := out[i].(map[string]interface{})
 				if !ok {
 					log.Info("item in instanatiated template is not an object") // TODO better
 					continue
 				}
-				if err := r.createOrUpdateObject(ctx, &compro, req.Namespace, obj); err != nil {
+				obj, err := r.createOrUpdateObject(ctx, &compro, req.Namespace, fields)
+				if err != nil {
 					return ctrl.Result{}, err // TODO can do better here
 				}
+				inventory.Add(newInventory, obj)
 			}
 		default:
 			log.Info("instantiated template does not result in an object or list of objects")
@@ -87,15 +96,17 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	return ctrl.Result{}, nil
+	compro.Status.Inventory = newInventory
+	err = r.Status().Update(ctx, &compro)
+	return ctrl.Result{}, err
 }
 
-func (r *ComprehensionReconciler) createOrUpdateObject(ctx context.Context, owner client.Object, namespace string, fields map[string]interface{}) error {
+func (r *ComprehensionReconciler) createOrUpdateObject(ctx context.Context, owner client.Object, namespace string, fields map[string]interface{}) (*unstructured.Unstructured, error) {
 	log := log.FromContext(ctx)
 	instance := &unstructured.Unstructured{Object: fields}
 	instance.SetNamespace(namespace)
 	if err := controllerutil.SetControllerReference(owner, instance, r.Scheme); err != nil {
-		return err
+		return nil, err
 	}
 	instance = instance.DeepCopy() // to preserve fields
 
@@ -108,16 +119,18 @@ func (r *ComprehensionReconciler) createOrUpdateObject(ctx context.Context, owne
 		return nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	log.Info("configured object", "action", action, "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
-	return nil
+	return instance, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ComprehensionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&generate.Comprehension{}).
+		For(&generate.Comprehension{},
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Complete(r)
 }

@@ -90,6 +90,30 @@ spec:
             type: object
           status:
             description: ComprehensionStatus defines the observed state of Comprehension
+            properties:
+              inventory:
+                description: Inventory enumerates the objects created by a Comprehension.
+                properties:
+                  entries:
+                    items:
+                      description: ObjectRef keeps flattened reference to a Kubernetes
+                        object, with a name (namespace and name), and an API version
+                        and kind (GroupKind and Version). The fields are intended
+                        to be readable.
+                      properties:
+                        groupVersion:
+                          type: string
+                        kind:
+                          type: string
+                        namespacedName:
+                          type: string
+                      required:
+                      - groupVersion
+                      - kind
+                      - namespacedName
+                      type: object
+                    type: array
+                type: object
             type: object
         type: object
     served: true
