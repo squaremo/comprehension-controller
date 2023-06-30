@@ -25,6 +25,7 @@ import (
 	gomegatypes "github.com/onsi/gomega/types"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -96,6 +97,13 @@ spec:
 		var configmaps corev1.ConfigMapList
 		var compro *generate.Comprehension
 
+		configmapMatch := func(name string) gomegatypes.GomegaMatcher {
+			return SatisfyAll(
+				HaveField("Data", HaveKeyWithValue("value", name)),
+				HaveField("Name", "cm-"+name),
+			)
+		}
+
 		BeforeEach(func() {
 			namespace = newNamespace()
 			compro = createComprehension(namespace, listCompro)
@@ -108,13 +116,6 @@ spec:
 		})
 
 		It("instantiates the template", func() {
-			configmapMatch := func(name string) gomegatypes.GomegaMatcher {
-				return SatisfyAll(
-					HaveField("Data", HaveKeyWithValue("value", name)),
-					HaveField("Name", "cm-"+name),
-				)
-			}
-
 			// these expectations are tied to the template, of course
 			Expect(configmaps.Items).To(ConsistOf(
 				configmapMatch("foo"),
@@ -128,6 +129,31 @@ spec:
 				return metav1.IsControlledBy(&cm, compro)
 			})
 			Expect(configmaps.Items).To(HaveEach(hasController))
+		})
+
+		When("an item is added to the generator", func() {
+			BeforeEach(func() {
+				compro.Spec.For[0].In.List = &apiextensions.JSON{
+					Raw: []byte(`["foo", "bar", "baz", "boo"]`),
+				}
+				Expect(k8sClient.Update(context.TODO(), compro)).To(Succeed())
+
+				Eventually(func() int {
+					Expect(k8sClient.List(context.TODO(), &configmaps, &client.ListOptions{
+						Namespace: namespace,
+					})).To(Succeed())
+					return len(configmaps.Items)
+				}, "5s", "1s").Should(Equal(4))
+			})
+
+			It("should have successfully rerun the comprehension", func() {
+				Expect(configmaps.Items).To(ConsistOf(
+					configmapMatch("foo"),
+					configmapMatch("bar"),
+					configmapMatch("baz"),
+					configmapMatch("boo"),
+				))
+			})
 		})
 	})
 

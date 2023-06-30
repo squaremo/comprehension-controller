@@ -67,7 +67,7 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	for i := range outs {
 		switch out := outs[i].(type) {
 		case map[string]interface{}:
-			if err := r.createObject(ctx, &compro, req.Namespace, out); err != nil {
+			if err := r.createOrUpdateObject(ctx, &compro, req.Namespace, out); err != nil {
 				return ctrl.Result{}, err // TODO do better
 			}
 		case []interface{}:
@@ -77,7 +77,7 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 					log.Info("item in instanatiated template is not an object") // TODO better
 					continue
 				}
-				if err := r.createObject(ctx, &compro, req.Namespace, obj); err != nil {
+				if err := r.createOrUpdateObject(ctx, &compro, req.Namespace, obj); err != nil {
 					return ctrl.Result{}, err // TODO can do better here
 				}
 			}
@@ -90,19 +90,28 @@ func (r *ComprehensionReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, nil
 }
 
-func (r *ComprehensionReconciler) createObject(ctx context.Context, owner client.Object, namespace string, fields map[string]interface{}) error {
+func (r *ComprehensionReconciler) createOrUpdateObject(ctx context.Context, owner client.Object, namespace string, fields map[string]interface{}) error {
 	log := log.FromContext(ctx)
-	var instance unstructured.Unstructured
-	instance.Object = fields
+	instance := &unstructured.Unstructured{Object: fields}
 	instance.SetNamespace(namespace)
-	if err := controllerutil.SetControllerReference(owner, &instance, r.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(owner, instance, r.Scheme); err != nil {
 		return err
 	}
-	err := r.Create(ctx, &instance) // FIXME Upsert instead
+	instance = instance.DeepCopy() // to preserve fields
+
+	action, err := controllerutil.CreateOrUpdate(ctx, r.Client, instance, func() error {
+		// assigning fields as a whole might overwrite things in an
+		// existing object; we really want to merge.
+		for k, v := range fields {
+			instance.Object[k] = v
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	log.Info("created object", "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
+
+	log.Info("configured object", "action", action, "apiVersion", instance.GetAPIVersion(), "kind", instance.GetKind(), "name", instance.GetName())
 	return nil
 }
 
