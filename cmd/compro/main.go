@@ -37,7 +37,7 @@ compro -f file.yaml
 		RunE: opts.runE,
 	}
 
-	cmd.Flags().StringVarP(&opts.filename, "file", "f", "-", "the path to a file containing a Comprehension object specification")
+	cmd.Flags().StringVarP(&opts.filename, "file", "f", "-", `the path to a file containing a Comprehension object specification; "-" for stdin`)
 	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "default", "the Kubernetes namespace to operate in")
 
 	if err := cmd.Execute(); err != nil {
