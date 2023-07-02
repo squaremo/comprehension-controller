@@ -24,6 +24,10 @@ Command-line tool that evaluates Comprehension objects.
 `
 
 func main() {
+	main_args(os.Stdin, os.Args[1:])
+}
+
+func main_args(in io.Reader, args []string) {
 	opts := &opts{}
 
 	cmd := &cobra.Command{
@@ -37,8 +41,11 @@ compro -f file.yaml
 		RunE: opts.runE,
 	}
 
-	cmd.Flags().StringVarP(&opts.filename, "file", "f", "-", "the path to a file containing a Comprehension object specification")
+	cmd.Flags().StringVarP(&opts.filename, "file", "f", "-", `the path to a file containing a Comprehension object specification; "-" for stdin`)
 	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "default", "the Kubernetes namespace to operate in")
+
+	cmd.SetArgs(args)
+	cmd.SetIn(in)
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
@@ -50,7 +57,7 @@ func (o *opts) runE(cmd *cobra.Command, args []string) error {
 	var input []byte
 	var err error
 	if o.filename == "-" {
-		input, err = io.ReadAll(os.Stdin)
+		input, err = io.ReadAll(cmd.InOrStdin())
 		if err != nil {
 			return err
 		}
@@ -91,12 +98,12 @@ func (o *opts) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	for i := range outs {
-		println("---")
+		fmt.Println("---")
 		bs, err := yaml.Marshal(outs[i])
 		if err != nil {
 			return err
 		}
-		print(string(bs))
+		fmt.Print(string(bs))
 	}
 
 	return nil
