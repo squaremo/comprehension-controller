@@ -18,6 +18,7 @@ package eval
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/cel-go/cel"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,6 +69,10 @@ func (ev *Evaluator) Eval(expr *generate.ComprehensionSpec) ([]interface{}, erro
 	}
 
 	var template interface{}
+	if expr.Yield.Template == nil {
+		fmt.Printf("%#v\n", expr)
+		return nil, fmt.Errorf("nil template")
+	}
 	if err := json.Unmarshal(expr.Yield.Template.Raw, &template); err != nil {
 		return nil, err
 	}

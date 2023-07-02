@@ -24,10 +24,10 @@ Command-line tool that evaluates Comprehension objects.
 `
 
 func main() {
-	main_args(os.Args[1:])
+	main_args(os.Stdin, os.Args[1:])
 }
 
-func main_args(args []string) {
+func main_args(in io.Reader, args []string) {
 	opts := &opts{}
 
 	cmd := &cobra.Command{
@@ -45,6 +45,7 @@ compro -f file.yaml
 	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "default", "the Kubernetes namespace to operate in")
 
 	cmd.SetArgs(args)
+	cmd.SetIn(in)
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
@@ -56,7 +57,7 @@ func (o *opts) runE(cmd *cobra.Command, args []string) error {
 	var input []byte
 	var err error
 	if o.filename == "-" {
-		input, err = io.ReadAll(os.Stdin)
+		input, err = io.ReadAll(cmd.InOrStdin())
 		if err != nil {
 			return err
 		}
